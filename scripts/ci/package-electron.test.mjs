@@ -125,7 +125,7 @@ test('release Windows packages layer the fail-closed signing config', () => {
   assert.equal(args.filter((arg) => arg === '--config').length, 1);
   assert.throws(
     () => electronBuilderArgs({ os: 'linux', arch: 'x64', requireSigning: true }),
-    /only for Windows/,
+    /only for Windows and macOS/,
   );
 });
 
@@ -253,4 +253,48 @@ test('CI uses the Electron package job as the only desktop package path', () => 
   assert.match(readFileSync(SCRIPT, 'utf8'), /'--publish', 'never'/);
   assert.doesNotMatch(electronJob, /--publish always/);
   assert.doesNotMatch(workflow, /autoDownload:\s*true/);
+});
+
+test('macOS packages build dmg and zip per architecture and are ad-hoc signed unless releasing', () => {
+  const unsigned = electronBuilderArgs({ os: 'macos', arch: 'arm64' });
+  assert.ok(unsigned.includes('--mac'));
+  assert.ok(unsigned.includes('dmg'));
+  assert.ok(unsigned.includes('zip'));
+  assert.ok(unsigned.includes('--arm64'));
+  assert.ok(unsigned.includes('--config.mac.identity=-'));
+  assert.ok(unsigned.includes('--config.mac.hardenedRuntime=false'));
+  assert.ok(unsigned.includes('--config.mac.notarize=false'));
+  assert.equal(unsigned[3], 'electron-builder.yml');
+  assert.deepEqual(unsigned.slice(-2), ['--publish', 'never']);
+
+  const signed = electronBuilderArgs({ os: 'macos', arch: 'x64', requireSigning: true });
+  assert.equal(signed[3], 'electron-builder.release.yml');
+  assert.ok(!signed.some((arg) => arg.startsWith('--config.mac.')));
+  assert.ok(signed.includes('--x64'));
+
+  assert.deepEqual(electronArtifactNames({ os: 'macos', arch: 'x64' }), [
+    'YAQMC-macos-x64.dmg',
+    'YAQMC-macos-x64.zip',
+  ]);
+});
+
+test('macOS cross-compilation follows the host architecture', () => {
+  for (const hostArch of ['x64', 'arm64']) {
+    assert.equal(isElectronCoreCross({ os: 'macos', arch: hostArch, hostArch }), false);
+    const arch = hostArch === 'x64' ? 'arm64' : 'x64';
+    assert.equal(isElectronCoreCross({ os: 'macos', arch, hostArch }), true);
+  }
+  assert.equal(isElectronCoreCross({ os: 'macos', arch: process.arch }), false);
+});
+
+test('compile steps cannot inherit Apple signing or notarization credentials', () => {
+  const env = packagingBuildEnvironment({
+    PATH: 'toolchain',
+    CSC_LINK: 'developer-id.p12',
+    CSC_KEY_PASSWORD: 'secret',
+    APPLE_API_KEY: '/tmp/AuthKey.p8',
+    APPLE_API_KEY_ID: 'KEYID',
+    APPLE_API_ISSUER: 'issuer',
+  });
+  assert.deepEqual(Object.keys(env), ['PATH']);
 });

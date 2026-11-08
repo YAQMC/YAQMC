@@ -21,6 +21,15 @@ import { writeAppUpdateMetadata } from './app-update-metadata.mjs';
 export const ELECTRON_OUTPUT_DIR_NAME = 'release-electron';
 export const ELECTRON_RELEASE_CONFIG = 'electron-builder.release.yml';
 export const WINDOWS_SIGNING_ENV_KEYS = ['WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
+/** Developer ID certificate plus App Store Connect API key used for notarization. */
+export const MACOS_SIGNING_ENV_KEYS = [
+  'CSC_LINK',
+  'CSC_KEY_PASSWORD',
+  'APPLE_API_KEY',
+  'APPLE_API_KEY_ID',
+  'APPLE_API_ISSUER',
+];
+export const SIGNABLE_ELECTRON_OSES = ['windows', 'macos'];
 
 export function parseElectronPackageArgs(argv) {
   const options = { dryRun: false };
@@ -37,8 +46,8 @@ export function parseElectronPackageArgs(argv) {
   return options;
 }
 
-export function isElectronCoreCross({ os, arch }) {
-  return os === 'windows' && arch === 'arm64';
+export function isElectronCoreCross({ os, arch, hostArch = process.arch }) {
+  return (os === 'windows' && arch === 'arm64') || (os === 'macos' && arch !== hostArch);
 }
 
 export function cargoBuildArgs(target) {
@@ -52,10 +61,8 @@ export function electronBuilderArgs({ os, arch, requireSigning = false }) {
     '--config',
     requireSigning ? ELECTRON_RELEASE_CONFIG : 'electron-builder.yml',
   ];
-  if (requireSigning) {
-    if (os !== 'windows') {
-      throw new Error('release signing is supported only for Windows packages');
-    }
+  if (requireSigning && !SIGNABLE_ELECTRON_OSES.includes(os)) {
+    throw new Error('release signing is supported only for Windows and macOS packages');
   }
   if (os === 'windows') {
     if (!requireSigning) {
@@ -75,6 +82,19 @@ export function electronBuilderArgs({ os, arch, requireSigning = false }) {
       'tar.gz',
       `--${arch}`,
     );
+  } else if (os === 'macos') {
+    if (!requireSigning) {
+      // Unsigned builds are ad-hoc signed: Apple silicon refuses to launch code with no
+      // signature, and flipping Electron fuses invalidates Electron's own one. Hardened
+      // runtime is only meaningful with a Developer ID, and with an ad-hoc identity it
+      // would reject the differently-signed Electron frameworks at launch.
+      args.push(
+        '--config.mac.identity=-',
+        '--config.mac.hardenedRuntime=false',
+        '--config.mac.notarize=false',
+      );
+    }
+    args.push('--mac', 'dmg', 'zip', `--${arch}`);
   } else {
     throw new Error(`unsupported Electron package OS ${os}`);
   }
@@ -93,6 +113,9 @@ export function electronArtifactNames({ os, arch }) {
       `YAQMC-linux-${arch}.rpm`,
       `YAQMC-linux-${arch}.tar.gz`,
     ];
+  }
+  if (os === 'macos') {
+    return [`YAQMC-macos-${arch}.dmg`, `YAQMC-macos-${arch}.zip`];
   }
   throw new Error(`unsupported Electron package OS ${os}`);
 }
@@ -150,7 +173,9 @@ export function stageElectronArtifacts({
       copied.push(blockmap);
     }
   }
-  const metadata = platform === 'windows' ? ['latest.yml'] : ['latest-linux.yml'];
+  // macOS has no in-place updater (see installDisabledReason), so no feed is staged for it.
+  const metadata =
+    platform === 'windows' ? ['latest.yml'] : platform === 'linux' ? ['latest-linux.yml'] : [];
   for (const name of metadata) {
     const from = path.join(outputRoot, name);
     if (existsSync(from)) {
@@ -189,7 +214,7 @@ export function packagingEnvironment(env = process.env) {
 
 export function packagingBuildEnvironment(env = process.env) {
   const sanitized = { ...packagingEnvironment(env) };
-  for (const key of WINDOWS_SIGNING_ENV_KEYS) {
+  for (const key of [...WINDOWS_SIGNING_ENV_KEYS, ...MACOS_SIGNING_ENV_KEYS]) {
     delete sanitized[key];
   }
   return sanitized;

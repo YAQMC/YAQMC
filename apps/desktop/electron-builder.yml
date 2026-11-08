@@ -1,4 +1,4 @@
-# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz.
+# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz + macOS dmg/zip (x64, arm64).
 # UPD-01: GitHub Releases provider for electron-updater metadata. Local packs must
 # pass --publish never (do not draft a release from a maintainer laptop).
 # The release workflow currently publishes unsigned Windows packages.
@@ -67,6 +67,9 @@ electronFuses:
   onlyLoadAppFromAsar: true
   loadBrowserProcessSpecificV8Snapshot: false
   grantFileProtocolExtraPrivileges: false
+  # macOS: flipping fuses rewrites the Electron binary; re-apply an ad-hoc signature so an
+  # unsigned arm64 build still launches. Developer ID signing replaces it afterwards.
+  resetAdHocDarwinSignature: true
 win:
   icon: resources/icon.ico
   # Keep electron-updater's publisher verification enabled for signed NSIS updates.
@@ -114,5 +117,31 @@ linux:
       arch:
         - x64
         - arm64
+# macOS defaults describe the signed release shape. Unsigned/local builds go through
+# scripts/ci/package-electron.mjs, which switches to an ad-hoc identity without hardened
+# runtime or notarization (see docs/macos.md).
 mac:
   icon: resources/icon.icns
+  category: public.app-category.music
+  # Electron 43 supports macOS 12 Monterey and newer.
+  minimumSystemVersion: '12.0'
+  artifactName: YAQMC-macos-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/macos/entitlements.mac.plist
+  entitlementsInherit: resources/macos/entitlements.mac.inherit.plist
+  notarize: false
+  extendInfo:
+    LSApplicationCategoryType: public.app-category.music
+    NSHumanReadableCopyright: GPL-3.0-or-later
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+dmg:
+  artifactName: YAQMC-macos-${arch}.${ext}

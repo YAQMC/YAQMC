@@ -48,15 +48,25 @@ export type TrayInstance = {
   destroy(): void;
 };
 
-export type TrayApis = {
-  Tray: new (icon: string) => TrayInstance;
+/** Electron's NativeImage in production; any opaque image object in tests. */
+export type TrayImage = object;
+
+export type TrayApis<Image extends TrayImage = TrayImage> = {
+  Tray: new (icon: string | Image) => TrayInstance;
   Menu: {
     buildFromTemplate(template: TrayMenuItem[]): unknown;
   };
+  /** Electron's nativeImage; needed on macOS to fit the menu bar. */
+  nativeImage?: {
+    createFromPath(filePath: string): { resize(options: { height: number }): Image };
+  };
 };
 
-export type CreateTrayOptions = {
-  apis: TrayApis;
+/** macOS draws a status item at the image's point size; the menu bar is 24pt high. */
+export const MACOS_TRAY_ICON_HEIGHT = 18;
+
+export type CreateTrayOptions<Image extends TrayImage = TrayImage> = {
+  apis: TrayApis<Image>;
   resourcesDir: string;
   getMainWindow: () => TrayWindow | undefined;
   invokePlayer: (method: PlayerInvokeMethod) => void | Promise<void>;
@@ -133,11 +143,15 @@ export function toggleMainWindow(getMainWindow: () => TrayWindow | undefined): v
   window.focus();
 }
 
-export function createTray(options: CreateTrayOptions): TrayHandle {
+export function createTray<Image extends TrayImage>(options: CreateTrayOptions<Image>): TrayHandle {
   const platform = options.platform ?? process.platform;
   const exists = options.existsSync ?? existsSync;
   const iconPath = resolveTrayIconPath(options.resourcesDir, platform, exists);
-  const tray = new options.apis.Tray(iconPath);
+  const tray = new options.apis.Tray(
+    platform === 'darwin' && options.apis.nativeImage
+      ? options.apis.nativeImage.createFromPath(iconPath).resize({ height: MACOS_TRAY_ICON_HEIGHT })
+      : iconPath,
+  );
   let labels = resolveTrayLabels(options.labels);
   const clicks = new Map<TrayMenuId, () => void>();
 

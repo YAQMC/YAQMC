@@ -63,7 +63,7 @@ test('desktop development import analysis does not resolve the Android app packa
         },
       ],
     });
-    const result = await server.transformRequest('/src/App.tsx');
+    const result = await server.transformRequest('/src/application/use-android-back-button.ts');
     assert.ok(result?.code.includes('/src/application/android-app.ts'));
     assert.ok(!result.code.includes('@capacitor/app'));
   } finally {

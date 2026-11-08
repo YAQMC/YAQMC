@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { androidVersion, rootVersion } from './android-version.mjs';
-import { ELECTRON_RELEASE_NOTES, assembleElectronRelease } from './assemble-electron-release.mjs';
+import { assembleElectronRelease, electronReleaseNotes } from './assemble-electron-release.mjs';
 import {
   ANDROID_APPLICATION_ID,
   ANDROID_MIN_SDK,
@@ -39,10 +39,10 @@ function demoteHeadings(markdown) {
   return markdown.trim().replace(/^#/gmu, '##');
 }
 
-export function combinedReleaseNotes(androidNotes) {
-  return `# YAQMC 发布说明 / Release notes\n\n${demoteHeadings(ELECTRON_RELEASE_NOTES)}\n\n${demoteHeadings(
-    androidNotes,
-  )}\n`;
+export function combinedReleaseNotes(androidNotes, { macosNotarized = false } = {}) {
+  return `# YAQMC 发布说明 / Release notes\n\n${demoteHeadings(
+    electronReleaseNotes({ macosNotarized }),
+  )}\n\n${demoteHeadings(androidNotes)}\n`;
 }
 
 export function addAndroidReleaseAssets({
@@ -50,6 +50,7 @@ export function addAndroidReleaseAssets({
   destDir,
   expectedCommit,
   expectedVersion = rootVersion().versionName,
+  macosNotarized = false,
 }) {
   if (!/^[0-9a-f]{40}$/u.test(expectedCommit ?? '')) {
     throw new Error('expected Android release commit must be a full lowercase Git SHA');
@@ -107,12 +108,14 @@ export function addAndroidReleaseAssets({
     copyFileSync(path.join(sourceDir, name), path.join(destDir, name));
   }
   const androidNotes = readFileSync(path.join(sourceDir, 'RELEASE-NOTES-ANDROID.md'), 'utf8');
-  writeFileSync(releaseNotesPath, combinedReleaseNotes(androidNotes));
+  writeFileSync(releaseNotesPath, combinedReleaseNotes(androidNotes, { macosNotarized }));
   return { apkName, files: readdirSync(destDir).sort(), version };
 }
 
 export function verifyDesktopReleaseTargets(sourceDir, expectedCommit, targets = 'all') {
-  if (!['all', 'windows', 'linux'].includes(targets)) throw new Error('Invalid release targets');
+  if (!['all', 'windows', 'linux', 'macos'].includes(targets)) {
+    throw new Error('Invalid release targets');
+  }
   for (const target of ELECTRON_PACKAGE_TARGETS.filter(
     (entry) => targets === 'all' || entry.os === targets,
   )) {
@@ -125,7 +128,8 @@ export function verifyDesktopReleaseTargets(sourceDir, expectedCommit, targets =
         throw new Error(`Missing required release artifact: ${name}`);
       }
     }
-    if (target.arch === 'x64') {
+    // macOS has no in-place update channel, so it publishes no updater feed.
+    if (target.arch === 'x64' && target.os !== 'macos') {
       const feed = target.os === 'windows' ? 'latest.yml' : 'latest-linux.yml';
       if (!existsSync(path.join(directory, feed))) throw new Error(`Missing updater feed: ${feed}`);
     }
@@ -144,12 +148,14 @@ export function assembleRelease({
   destDir,
   expectedCommit,
   targets = 'all',
+  macosNotarized = false,
 }) {
   verifyDesktopReleaseTargets(electronSourceDir, expectedCommit, targets);
   const electron = assembleElectronRelease({
     sourceDir: electronSourceDir,
     correspondingSourceDir,
     destDir,
+    macosNotarized,
   });
   if (electron.releaseCommit !== expectedCommit) {
     throw new Error('Electron release assets do not match the expected release commit');
@@ -158,6 +164,7 @@ export function assembleRelease({
     sourceDir: androidSourceDir,
     destDir,
     expectedCommit,
+    macosNotarized,
   });
   return { electron, android, files: readdirSync(destDir).sort() };
 }
@@ -176,6 +183,7 @@ if (invokedDirectly) {
     destDir: path.resolve(options.to),
     expectedCommit: options.commit,
     targets: options.targets || 'all',
+    macosNotarized: process.env.YAQMC_MACOS_SIGNING === 'true',
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

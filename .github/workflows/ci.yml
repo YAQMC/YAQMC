@@ -15,6 +15,7 @@ on:
           - all
           - windows
           - linux
+          - macos
       optimization:
         description: Native optimization profile
         required: true
@@ -80,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2025]
+        os: [ubuntu-22.04, windows-2025, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -147,6 +148,48 @@ jobs:
             target
           key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('Cargo.lock') }}-dev
 
+  rust-macos:
+    # Core is cross-platform Rust (CoreAudio via cpal, Wasmtime); this is the job that proves it
+    # still compiles and passes its unit tests against the macOS SDK on Intel; arm64 is cross-checked only.
+    name: Rust Core (macOS x64, arm64 cross-check)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: '1.88.0'
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-x86_64-apple-darwin-stable-${{ hashFiles('Cargo.lock') }}-dev
+          restore-keys: |
+            cargo-${{ runner.os }}-x86_64-apple-darwin-stable-
+      - name: Prepare frontend stub for cargo-only builds
+        run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
+      - name: Check the Apple silicon cross target compiles
+        run: cargo check -p yaqmc-core --locked --target aarch64-apple-darwin
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      - run: cargo test -p yaqmc-core --lib --locked
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      - name: Test native updater replacement and recovery
+        run: cargo test -p yaqmc-update-helper --locked
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-x86_64-apple-darwin-stable-${{ hashFiles('Cargo.lock') }}-dev
+
   android-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -172,12 +215,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2025]
+        os: [ubuntu-22.04, windows-2025, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Scan tracked account artifacts (Linux)
-        if: runner.os == 'Linux'
+      - name: Scan tracked account artifacts (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        shell: bash
         run: bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh
       - name: Scan tracked account artifacts (Windows)
         if: runner.os == 'Windows'
@@ -241,6 +285,13 @@ jobs:
           --target ${{ matrix.target }}
           --os ${{ matrix.os }}
           --arch ${{ matrix.arch }}
+      - name: Verify macOS bundle architecture and ad-hoc signature
+        if: matrix.os == 'macos'
+        run: >-
+          node scripts/ci/verify-macos-package.mjs
+          --dir release-electron/YAQMC-electron-macos-${{ matrix.arch }}
+          --arch ${{ matrix.arch }}
+          --signed false
       - name: Stage and verify Linux x64 tester artifact
         if: matrix.os == 'linux' && matrix.arch == 'x64'
         run: |
@@ -286,7 +337,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
   summarize:
     name: CI summary
@@ -296,6 +347,7 @@ jobs:
         frontend-quality,
         frontend-build,
         rust-quality,
+        rust-macos,
         android-quality,
         secret-scan,
         electron-build,
@@ -315,6 +367,7 @@ jobs:
             echo "- frontend-quality: \`${{ needs.frontend-quality.result }}\`"
             echo "- frontend-build: \`${{ needs.frontend-build.result }}\`"
             echo "- rust-quality: \`${{ needs.rust-quality.result }}\`"
+            echo "- rust-macos: \`${{ needs.rust-macos.result }}\`"
             echo "- android-quality: \`${{ needs.android-quality.result }}\`"
             echo "- electron-build: \`${{ needs.electron-build.result }}\`"
             echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
@@ -326,6 +379,7 @@ jobs:
           needs.frontend-quality.result != 'success' ||
           needs.frontend-build.result != 'success' ||
           needs.rust-quality.result != 'success' ||
+          needs.rust-macos.result != 'success' ||
           needs.android-quality.result != 'success' ||
           needs.electron-build.result != 'success' ||
           needs.secret-scan.result != 'success' ||

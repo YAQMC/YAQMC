@@ -7,6 +7,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  nativeImage,
   protocol,
   screen,
   session,
@@ -1069,7 +1070,10 @@ function createMainWindow(root: string): BrowserWindow {
     minHeight: 680,
     show: !(__YAQMC_QA_BUILD__ && smoke),
     backgroundColor: '#11120f',
-    frame: false,
+    // macOS keeps its native traffic lights over the app chrome; elsewhere YAQMC draws its own.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } }
+      : { frame: false }),
     icon: path.join(
       desktopRoot,
       'resources',
@@ -1287,7 +1291,7 @@ function installTrayAndShortcuts(): void {
   }
   try {
     trayHandle = createTray({
-      apis: { Tray, Menu },
+      apis: { Tray, Menu, nativeImage },
       resourcesDir,
       getMainWindow: () => mainWindow,
       invokePlayer,
@@ -1420,5 +1424,14 @@ if (
 
   app.on('window-all-closed', () => {
     app.quit();
+  });
+
+  // macOS: clicking the Dock icon brings back a window hidden by close-to-tray.
+  app.on('activate', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 }

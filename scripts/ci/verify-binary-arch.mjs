@@ -12,6 +12,12 @@ const ELF_MACHINE = {
   183: 'aarch64',
 };
 
+// Mach-O cputype (CPU_ARCH_ABI64 | base type).
+const MACHO_CPU = {
+  0x01000007: 'x86_64',
+  0x0100000c: 'aarch64',
+};
+
 const TARGET_ARCH = {
   'i686-pc-windows-msvc': 'i686',
   'x86_64-pc-windows-msvc': 'x86_64',
@@ -19,6 +25,8 @@ const TARGET_ARCH = {
   'i686-unknown-linux-gnu': 'i686',
   'x86_64-unknown-linux-gnu': 'x86_64',
   'aarch64-unknown-linux-gnu': 'aarch64',
+  'x86_64-apple-darwin': 'x86_64',
+  'aarch64-apple-darwin': 'aarch64',
 };
 
 export function inspectBinaryArchitecture(bytes) {
@@ -50,7 +58,22 @@ export function inspectBinaryArchitecture(bytes) {
     if (!arch) throw new Error(`unsupported PE Machine 0x${machine.toString(16)}`);
     return { format: 'pe', arch, machine };
   }
-  throw new Error('file is neither a PE nor an ELF binary');
+  if (bytes.length >= 8) {
+    const magic = (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
+    if (magic === 0xfeedfacf) {
+      const cpu = (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) >>> 0;
+      const arch = MACHO_CPU[cpu];
+      if (!arch) throw new Error(`unsupported Mach-O cputype 0x${cpu.toString(16)}`);
+      return { format: 'macho', arch, machine: cpu };
+    }
+    if (magic === 0xbebafeca || magic === 0xbfbafeca) {
+      // Packages are built per architecture; a fat binary means the wrong artifact was staged.
+      throw new Error(
+        'universal (fat) Mach-O binaries are not part of the per-arch package contract',
+      );
+    }
+  }
+  throw new Error('file is neither a PE, ELF, nor Mach-O binary');
 }
 
 export function expectedArchForTarget(target) {

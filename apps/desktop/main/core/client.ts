@@ -18,6 +18,9 @@ const LONG_METHODS = new Set([
   'plugin_install_from',
   'plugin_install_unpacked',
   'plugin_reload',
+  // GitHub metadata reads can spend DNS, connect and body timeouts across redirects.
+  'plugin_store_search',
+  'plugin_store_releases',
   'diagnostics_export_bundle_to',
   'statistics_export_to',
   'platform_export_diagnostics',

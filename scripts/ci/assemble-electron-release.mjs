@@ -34,45 +34,62 @@ const expectedAmllPackages = [
   },
 ];
 
-export const ELECTRON_RELEASE_NOTES = `# YAQMC 桌面版 / Desktop release
+/**
+ * Bilingual desktop release notes. macOS signing is opt-in (YAQMC_MACOS_SIGNING), so the notes
+ * state Gatekeeper behavior from the actual build mode rather than assuming notarization.
+ */
+export function electronReleaseNotes({ macosNotarized = false } = {}) {
+  const macosZh = macosNotarized
+    ? '**macOS 应用使用 Developer ID 签名并已公证**（Gatekeeper 可直接验证）。'
+    : '**macOS 应用仅为临时（ad-hoc）签名且未经公证**。首次打开时 Gatekeeper 会阻止运行：请在“系统设置 → 隐私与安全性”中选择“仍要打开”。';
+  const macosEn = macosNotarized
+    ? 'macOS apps are signed with a Developer ID and notarized, so Gatekeeper can verify them.'
+    : `macOS apps are only ad-hoc signed and are not notarized. Gatekeeper blocks the first
+launch; allow it from System Settings → Privacy & Security → Open Anyway.`;
+  return `# YAQMC 桌面版 / Desktop release
 
 ## 中文
 
-提供 Windows 与 Linux 的 x64、arm64 安装包。请按操作系统与处理器架构选择附件。
+提供 Windows、Linux 与 macOS 的 x64、arm64 安装包。请按操作系统与处理器架构选择附件。
 
 **Windows 安装程序和便携版未签名**，可能出现未知发布者或 SmartScreen 提示；
 Windows 更新通道不提供发布者签名验证。Linux 产物也未进行代码签名。
+${macosZh}
 请仅从 YAQMC 官方 Release 下载，并核对公布的 SHA-256 校验值。
 校验值用于发现文件损坏，不能独立证明发布者身份。
 
-- 不提供 Windows i686（32 位）版本。
+- 不提供 Windows i686（32 位）版本，也不提供 macOS 通用（universal）包；请选择 x64（Intel）或 arm64（Apple 芯片）。
 - 应用与密钥环数据命名空间为 \`org.yaqmc.desktop\`。
 - Linux 图形诊断使用 Chromium/Ozone 模式，旧宿主的渲染器覆盖配置不适用。
-- 官方 Windows 安装版、便携版与 Linux AppImage 支持应用内更新（x64、arm64）；其他安装方式由原分发渠道更新。
+- 官方 Windows 安装版、便携版与 Linux AppImage 支持应用内更新（x64、arm64）；macOS 与其他安装方式需手动下载新版本或由原分发渠道更新。
 - 打包前检查 Provider 就绪状态及来源。YAQMC、\`qm-api-rs\` 和 Apple Music-like Lyrics
   的确切对应源码归档见 \`CORRESPONDING-SOURCE-MANIFEST.json\`。
 - 本次构建不代表已完成 A→B 跨版本升级演练。
 
 ## English
 
-Windows and Linux packages are available for x64 and arm64. Choose the asset for your OS and architecture.
+Windows, Linux, and macOS packages are available for x64 and arm64. Choose the asset for your OS and architecture.
 
 Windows installers and portable executables are unsigned. Windows may display an
 unknown-publisher or SmartScreen warning. Publisher signature verification is not
-available for this Windows update channel. Linux artifacts are also not code-signed;
-download only from the official YAQMC release and compare the published SHA-256 checksums.
+available for this Windows update channel. Linux artifacts are also not code-signed.
+${macosEn}
+Download only from the official YAQMC release and compare the published SHA-256 checksums.
 Checksums detect corruption; they do not establish an independent publisher identity.
 
-- Windows i686 is not published.
+- Windows i686 and universal macOS packages are not published; choose x64 (Intel) or arm64 (Apple silicon).
 - App and keyring data stay under \`org.yaqmc.desktop\`.
 - Linux graphics diagnostics use Chromium/Ozone modes; retired-host renderer overrides do not apply.
 - Official Windows installers, portable EXEs and Linux AppImages support in-app updates on x64 and arm64.
-  Other installation formats use their original distribution channel.
+  macOS and other installation formats are updated by downloading a new release or through their original channel.
 - Provider readiness and provenance are enforced before packaging. The exact YAQMC,
   \`qm-api-rs\`, and Apple Music-like Lyrics corresponding-source archives are identified by
   \`CORRESPONDING-SOURCE-MANIFEST.json\`.
 - This build does not constitute an A→B upgrade rehearsal.
 `;
+}
+
+export const ELECTRON_RELEASE_NOTES = electronReleaseNotes();
 
 export function parseAssembleArgs(argv) {
   const options = {};
@@ -399,7 +416,7 @@ function validatePackageArtifactIdentity(sourceDir, releaseCommit) {
   for (const entry of entries) {
     const match =
       entry.isDirectory() &&
-      /^YAQMC-electron-(windows|linux)-(x64|arm64)-([0-9a-f]{40})$/u.exec(entry.name);
+      /^YAQMC-electron-(windows|linux|macos)-(x64|arm64)-([0-9a-f]{40})$/u.exec(entry.name);
     if (!match || match[3] !== releaseCommit) {
       throw new Error(
         `electron package artifact ${entry.name} is not bound to source commit ${releaseCommit}`,
@@ -458,7 +475,12 @@ function validatePackageArtifactIdentity(sourceDir, releaseCommit) {
   }
 }
 
-export function assembleElectronRelease({ sourceDir, correspondingSourceDir, destDir }) {
+export function assembleElectronRelease({
+  sourceDir,
+  correspondingSourceDir,
+  destDir,
+  macosNotarized = false,
+}) {
   if (!existsSync(sourceDir)) {
     throw new Error(`electron release source is missing: ${sourceDir}`);
   }
@@ -513,7 +535,10 @@ export function assembleElectronRelease({ sourceDir, correspondingSourceDir, des
     .map((name) => `${sha256File(path.join(destDir, name))}  ${name}`)
     .join('\n');
   writeFileSync(path.join(destDir, ELECTRON_COMBINED_CHECKSUMS_NAME), `${sums}\n`);
-  writeFileSync(path.join(destDir, ELECTRON_RELEASE_NOTES_NAME), ELECTRON_RELEASE_NOTES);
+  writeFileSync(
+    path.join(destDir, ELECTRON_RELEASE_NOTES_NAME),
+    electronReleaseNotes({ macosNotarized }),
+  );
   return {
     destDir,
     files: readdirSync(destDir).sort(),

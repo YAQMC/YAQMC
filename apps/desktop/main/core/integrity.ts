@@ -1,6 +1,11 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import {
+  coreSha256,
+  FILE_SHA256_V1,
+  MACHO_CONTENT_SHA256_V1,
+  type CoreHashMode,
+} from './core-hash.js';
 
 export type CoreIntegrityPolicy = 'required' | 'optional';
 
@@ -8,6 +13,7 @@ export type CoreSha256Manifest = {
   name: string;
   sha256: string;
   bytes: number;
+  hashMode: CoreHashMode;
 };
 
 export class CoreIntegrityError extends Error {
@@ -22,14 +28,19 @@ export function coreManifestPath(binary: string): string {
 }
 
 export function sha256File(filePath: string): string {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  return coreSha256(readFileSync(filePath), FILE_SHA256_V1);
 }
 
 export function parseCoreManifest(value: unknown): CoreSha256Manifest {
   if (value === null || typeof value !== 'object') {
     throw new CoreIntegrityError('core manifest is not an object');
   }
-  const record = value as { name?: unknown; sha256?: unknown; bytes?: unknown };
+  const record = value as {
+    name?: unknown;
+    sha256?: unknown;
+    bytes?: unknown;
+    hashMode?: unknown;
+  };
   if (typeof record.name !== 'string' || record.name.length === 0) {
     throw new CoreIntegrityError('core manifest is missing name');
   }
@@ -39,7 +50,16 @@ export function parseCoreManifest(value: unknown): CoreSha256Manifest {
   if (typeof record.bytes !== 'number' || !Number.isInteger(record.bytes) || record.bytes < 0) {
     throw new CoreIntegrityError('core manifest is missing bytes');
   }
-  return { name: record.name, sha256: record.sha256.toLowerCase(), bytes: record.bytes };
+  const hashMode = record.hashMode ?? FILE_SHA256_V1;
+  if (hashMode !== FILE_SHA256_V1 && hashMode !== MACHO_CONTENT_SHA256_V1) {
+    throw new CoreIntegrityError(`core manifest has unsupported hash mode ${String(hashMode)}`);
+  }
+  return {
+    name: record.name,
+    sha256: record.sha256.toLowerCase(),
+    bytes: record.bytes,
+    hashMode,
+  };
 }
 
 /**
@@ -73,7 +93,14 @@ export function verifyCoreBinary(
       `core manifest name mismatch: expected ${name}, found ${manifest.name}`,
     );
   }
-  const actual = sha256File(binary);
+  let actual: string;
+  try {
+    actual = coreSha256(readFileSync(binary), manifest.hashMode);
+  } catch (error) {
+    throw new CoreIntegrityError(
+      `cannot hash core with ${manifest.hashMode}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   if (actual !== manifest.sha256) {
     throw new CoreIntegrityError(
       `core sha256 mismatch: expected ${manifest.sha256}, found ${actual}`,

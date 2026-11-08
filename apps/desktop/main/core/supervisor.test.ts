@@ -10,6 +10,7 @@ import { CoreClient } from './client';
 import { FrameDecoder, encodeFrame } from './frames';
 import { CORE_SPAWN_ENV_ALLOWLIST, buildCoreSpawnEnv } from './env';
 import { corePidPath } from './pid';
+import desktopPackage from '../../package.json';
 import {
   CoreSupervisor,
   CORE_PING_INTERVAL_MS,
@@ -749,15 +750,15 @@ describe.skipIf(!liveBinary)('live yaqmc-core', () => {
   it('reaches ready and answers core_ping', async () => {
     const supervisor = new CoreSupervisor({
       binary: liveBinary as string,
-      hostVersion: '0.1.0',
-      expectedCoreVersion: '0.1.0',
+      hostVersion: desktopPackage.version,
+      expectedCoreVersion: desktopPackage.version,
       autoRestart: false,
       handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
       shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
       ...tempDirs(),
     });
     const identity = await supervisor.start();
-    expect(identity.version).toBe('0.1.0');
+    expect(identity.version).toBe(desktopPackage.version);
     await expect(supervisor.client.invoke('core_ping')).resolves.toEqual({});
     await supervisor.stop();
   }, 20_000);

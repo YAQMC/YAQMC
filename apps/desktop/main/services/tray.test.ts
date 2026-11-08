@@ -15,7 +15,9 @@ import {
   localeFromPreferences,
   trayLabelsForLocale,
   trayLabelsFromLocale,
+  MACOS_TRAY_ICON_HEIGHT,
   type TrayApis,
+  type TrayImage,
   type TrayInstance,
   type TrayMenuItem,
   type TrayWindow,
@@ -34,7 +36,7 @@ class FakeTray implements TrayInstance {
   click: (() => void) | undefined;
   destroyed = false;
 
-  constructor(readonly icon: string) {}
+  constructor(readonly icon: string | TrayImage) {}
 
   setContextMenu(menu: unknown): void {
     this.contextMenu = menu;
@@ -73,7 +75,7 @@ function createApis(trays: FakeTray[] = []): { apis: TrayApis; template: TrayMen
   const template: TrayMenuItem[] = [];
   const apis: TrayApis = {
     Tray: class extends FakeTray {
-      constructor(icon: string) {
+      constructor(icon: string | TrayImage) {
         super(icon);
         trays.push(this);
       }
@@ -92,6 +94,49 @@ function clickMenu(template: TrayMenuItem[], id: string): void {
   const item = template.find((entry) => entry.id === id);
   item?.click?.();
 }
+
+describe('macOS tray icon', () => {
+  it('scales the status item image to the menu bar instead of using the 512px icon', () => {
+    const trays: FakeTray[] = [];
+    const { apis } = createApis(trays);
+    const resized = { kind: 'resized-image' };
+    const resize = vi.fn(() => resized);
+    const createFromPath = vi.fn(() => ({ resize }));
+    createTray({
+      apis: { ...apis, nativeImage: { createFromPath } },
+      resourcesDir: '/app/resources',
+      platform: 'darwin',
+      existsSync: () => false,
+      getMainWindow: () => undefined,
+      invokePlayer: vi.fn(),
+      unlockLyricsSurfaces: vi.fn(),
+      openSettings: vi.fn(),
+      quit: vi.fn(),
+    });
+    expect(createFromPath).toHaveBeenCalledWith(path.join('/app/resources', 'icon.png'));
+    expect(resize).toHaveBeenCalledWith({ height: MACOS_TRAY_ICON_HEIGHT });
+    expect(trays[0]?.icon).toBe(resized);
+  });
+
+  it('keeps passing a file path on other platforms', () => {
+    const trays: FakeTray[] = [];
+    const { apis } = createApis(trays);
+    const createFromPath = vi.fn();
+    createTray({
+      apis: { ...apis, nativeImage: { createFromPath } },
+      resourcesDir: '/app/resources',
+      platform: 'linux',
+      existsSync: () => false,
+      getMainWindow: () => undefined,
+      invokePlayer: vi.fn(),
+      unlockLyricsSurfaces: vi.fn(),
+      openSettings: vi.fn(),
+      quit: vi.fn(),
+    });
+    expect(createFromPath).not.toHaveBeenCalled();
+    expect(trays[0]?.icon).toBe(path.join('/app/resources', 'icon.png'));
+  });
+});
 
 describe('close-to-tray preference', () => {
   it('hides only when hide-to-tray is on and the tray is alive', () => {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for nested executables (Electron helpers, the yaqmc-core sidecar, the update helper).
+  - allow-jit: Electron helper processes run V8.
+  - allow-unsigned-executable-memory: the Core sidecar's Wasmtime compiles plugin WebAssembly
+    (Cranelift) into memory that is made executable at runtime.
+  Validate with a signed build that loads a Provider Component plugin before narrowing these.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

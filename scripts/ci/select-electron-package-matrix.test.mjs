@@ -17,11 +17,11 @@ test('pull requests only pack Electron smoke targets', () => {
 test('release-style pushes select the full Electron matrix without i686', () => {
   const selected = selectElectronPackageMatrix({ eventName: 'push' });
   assert.equal(selected.length, ELECTRON_PACKAGE_TARGETS.length);
-  assert.equal(selected.length, 4);
+  assert.equal(selected.length, 6);
   assert.ok(!selected.some((row) => row.arch === 'ia32' || row.arch === 'i686'));
   assert.deepEqual(
     selected.map((row) => `${row.os}-${row.arch}`),
-    ['windows-x64', 'windows-arm64', 'linux-x64', 'linux-arm64'],
+    ['windows-x64', 'windows-arm64', 'linux-x64', 'linux-arm64', 'macos-arm64', 'macos-x64'],
   );
 });
 
@@ -50,4 +50,17 @@ test('Linux arm64 uses the FACT ubuntu-22.04-arm runner', () => {
   assert.equal(arm.runner, 'ubuntu-22.04-arm');
   assert.equal(arm.target, 'aarch64-unknown-linux-gnu');
   assert.equal(arm.cross, false);
+});
+
+test('macOS builds both architectures on Intel, cross-compiling arm64', () => {
+  const rows = selectElectronPackageMatrix({ eventName: 'workflow_dispatch', targets: 'macos' });
+  assert.deepEqual(
+    rows.map((row) => [row.arch, row.runner, row.target, row.cross]),
+    [
+      ['arm64', 'macos-15-intel', 'aarch64-apple-darwin', true],
+      ['x64', 'macos-15-intel', 'x86_64-apple-darwin', false],
+    ],
+  );
+  // macOS runners are not part of the pull-request smoke set.
+  assert.ok(rows.every((row) => !row.smoke));
 });

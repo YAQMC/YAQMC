@@ -39,4 +39,6 @@ contextBridge.exposeInMainWorld('yaqmc', {
   },
   windowRole: 'main',
   hostInfo: createPreloadHostInfo(process.versions.electron, process.platform, process.execPath),
+  // macOS uses its native traffic lights (titleBarStyle hiddenInset) instead of YAQMC's controls.
+  ...(process.platform === 'darwin' ? { capabilities: { windowControls: false } } : {}),
 });
