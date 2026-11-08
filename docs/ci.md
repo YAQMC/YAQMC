@@ -2,44 +2,47 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes the desktop and Android GitHub Actions pipelines. Windows and Linux releases are unsigned; Android requires a persistent release certificate. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
+This page describes the desktop and Android GitHub Actions pipelines. Windows releases are unsigned, Linux packages are not code-signed, and macOS packages are ad-hoc-signed unless release signing is enabled; Android requires a persistent release certificate. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow        | File                                      | Trigger                                          | Result                                                                               |
-| --------------- | ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| CI              | `.github/workflows/ci.yml`                | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                        |
-| Build artifacts | `.github/workflows/package-artifacts.yml` | manual dispatch only                             | unsigned Windows/Linux packages and an Android debug APK; Actions artifacts only     |
-| YAQMC release   | `.github/workflows/electron-release.yml`  | `v*` tags, manual dispatch                       | official stable/beta/nightly Releases; manual branch runs create source-build drafts |
+| Workflow        | File                                      | Trigger                                          | Result                                                                                                 |
+| --------------- | ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| CI              | `.github/workflows/ci.yml`                | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                                          |
+| Build artifacts | `.github/workflows/package-artifacts.yml` | manual dispatch only                             | Windows/Linux packages, ad-hoc-signed macOS packages, and an Android debug APK; Actions artifacts only |
+| YAQMC release   | `.github/workflows/electron-release.yml`  | `v*` tags, manual dispatch                       | official stable/beta/nightly Releases; manual branch runs create source-build drafts                   |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
 ## Manual artifact builds
 
 After pushing a commit, open **Actions → Build artifacts → Run workflow**, select the branch and
-`all`, `windows`, `linux`, or `android`, then start the workflow. Download the packages from the
+`all`, `windows`, `linux`, `macos`, or `android`, then start the workflow. Download the packages from the
 completed run's **Artifacts** section; they are retained for 14 days. Pushes do not automatically
 run this dedicated workflow, and it never creates or publishes a GitHub Release.
 
 Desktop builds reuse the existing x64/arm64 matrix and package scripts. `ci` uses ThinLTO with
 eight codegen units; `production` uses Fat LTO with one codegen unit. Windows artifacts contain
-an installer and portable EXE; Linux artifacts contain AppImage, deb, rpm, and tar.gz packages.
+an installer and portable EXE; Linux artifacts contain AppImage, deb, rpm, and tar.gz packages;
+macOS artifacts contain architecture-specific dmg and zip packages with ad-hoc signatures.
 Android builds its separate renderer and a debug-signed test APK for arm64-v8a and x86_64 without
 requiring release signing secrets. A debug APK cannot replace an APK signed with another key.
 
 ## Gates and package matrix
 
 Every CI run performs frontend formatting, documentation, lint, TypeScript,
-Vitest and script checks; builds the Electron host on Linux and Windows; runs
-Rust fmt, clippy and workspace tests; validates contracts; checks the
+Vitest and script checks; builds the Electron host on Linux, Windows and macOS; runs
+Rust fmt, clippy and workspace tests, plus native x64 Core unit tests and an arm64 cross-check on `macos-15-intel`; validates contracts; checks the
 unconditional public `qm-api-rs` git pin; tests provider-readiness and provenance
-validators with synthetic fixtures; and scans for secrets on Linux and Windows. Cargo fetches the exact public revision directly with
+validators with synthetic fixtures; and scans for secrets on Linux, Windows, and macOS. Cargo fetches the exact public revision directly with
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
 
 - Pull requests package Windows x64 and Linux x64.
-- Pushes to `main` package Windows x64/arm64 and Linux x64/arm64.
-- Manual runs select `windows`, `linux`, or `all`, and `ci` or `production` optimization.
-- Windows arm64 is cross-compiled on `windows-2025`. Linux arm64 uses `ubuntu-22.04-arm`.
+- Pushes to `main` package Windows x64/arm64, Linux x64/arm64 and macOS arm64/x64.
+- Manual runs select `windows`, `linux`, `macos`, or `all`, and `ci` or `production` optimization.
+- Windows arm64 is cross-compiled on `windows-2025`. Linux arm64 uses `ubuntu-22.04-arm`. macOS x64 is native on
+  `macos-15-intel`; macOS arm64 is cross-compiled there to avoid ARM runner capacity failures.
+  This path does not execute tests on Apple silicon.
 - Windows i686 is not built or published.
 
 Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and manual packaging runs are not cancelled mid-flight.
@@ -48,7 +51,7 @@ Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and ma
 
 `frontend-build` uploads `yaqmc-frontend-dist-<sha>`. Each package job downloads that exact artifact, compiles `yaqmc-core` for its Rust target, stages the Core executable, builds Electron Main/preload code, and invokes electron-builder with publishing disabled.
 
-Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. Package jobs install Electron packaging tools on Linux; retired Linux web-runtime packages are not host dependencies.
+Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. macOS produces `.dmg` and `.zip` per architecture; `verify-macos-package.mjs` checks that the app and the bundled Core are thin Mach-O for the expected architecture and that the signature matches the build mode. Package jobs install Electron packaging tools on Linux; retired Linux web-runtime packages are not host dependencies.
 
 The Android release job builds its own `dist-android` renderer, compiles the shared Rust Core for `arm64-v8a`, synchronizes Capacitor, and assembles a minified release APK with JDK 21, SDK 36, and NDK 28.2.13676358. Android does not reuse the desktop renderer artifact because its host feature boundary is different.
 
@@ -65,6 +68,16 @@ the publisher. Windows may show an unknown-publisher or SmartScreen warning.
 
 An explicit local `--require-signing true` build still uses the separate fail-closed
 `electron-builder.release.yml` configuration; it is not the current release workflow policy.
+
+## macOS release signing
+
+macOS packages are ad-hoc signed by default, without hardened runtime or notarization, so the release does not depend
+on an Apple Developer account. Setting the repository variable `YAQMC_MACOS_SIGNING=true` switches the macOS package
+jobs to Developer ID signing, hardened runtime and notarization. Preflight then requires `MAC_CSC_LINK`,
+`MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY_P8_BASE64`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` in `release-signing`. The
+notarization key is written to a temporary file and removed after packaging. Compile steps never receive Apple
+credentials. Release notes state which mode was used. See [macOS](macos.md) for the entitlements and current
+verification status.
 
 ## Android release signing
 
@@ -96,7 +109,7 @@ codegen units, Rust target, Node version, Electron version, and Git identity.
 The release assembler requires that identity to match the corresponding-source
 commit before flattening assets.
 
-Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
+Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Packaging caches also include the runner architecture to isolate host build artifacts. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
 
 ## Artifact and release names
 
@@ -129,8 +142,9 @@ existing draft after review, or use a new version for changed content.
 
 Signing configuration is checked before toolchain installation and frontend builds;
 missing secrets are reported by name, never by value. Tagged releases require the
-complete Windows and Linux x64/arm64 matrix, both Windows setup and portable EXEs,
-all four Linux formats, x64 updater feeds, and the arm64-v8a Android APK. Manual
+complete Windows, Linux and macOS x64/arm64 matrix, both Windows setup and portable EXEs,
+all four Linux formats, the macOS dmg and zip, x64 Windows/Linux updater feeds (macOS has no in-app updater), and the
+arm64-v8a Android APK. Manual
 Windows/Linux rehearsals may limit desktop targets but still include Android.
 Do not create a stable tag until signing credentials are configured. Old releases
 and tags are removed separately after checking their exact names; CI does not delete

@@ -22,6 +22,13 @@ The QQ Music provider decrypts QRC in Rust, extracts XML `LyricContent` when pre
 parentheses around timed words, decodes entities, and aligns translation/romanization by timestamp. Legacy LRC is
 the fallback. Normalized cache keys carry a parser revision so fixes invalidate old documents.
 
+QQ Music romanization comes only from the `roma` field returned by the pinned `qm-api-rs`
+`get_lyric` API with romanization requested. The library owns requests, decoding and QRC/LRC syntax;
+YAQMC maps and aligns the returned data into `LyricDocument`. Neither the frontend nor the host generates
+romanization locally. A missing `roma` stays empty, including for Mandarin songs; availability depends
+on the song's provider data, not a language-based generator. The Show/Auto/Hide setting only changes
+visibility and never changes the document. Lyrics loading does not request song details to gate conversion.
+
 ## Renderer
 
 The lyrics page is a full-window immersive surface over a cover-derived background. The immersive page and

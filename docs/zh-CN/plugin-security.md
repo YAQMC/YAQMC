@@ -18,7 +18,10 @@ Cookie 或任意渲染器 IPC。
 
 可授予：`track.read`、`lyrics.read`、`player.read`、`player.control`、`theme.read`、`plugin.storage`、
 `scene.register`、`style.register`，以及 v2 的 `ui.contextMenu`、`ui.playerBar`、`ui.sidebar`、`ui.notify` 和
-`network:https://host`。
+`network:https://host`，以及 v4 的 `ui.pages`、`ui.navigation`、`ui.layout`。API v4 页面是由 YAQMC 组件渲染的区块文档，
+插件不能向这些界面注入标记、样式、图片或 URL（见[插件页面 API](plugin-pages-api.md)）。
+
+API v2/v3/v4 另支持 `ui.songBadges`，仅提供有上限的声明式文本标签，不授予代码执行或网络访问能力。
 
 旧版 API v1-v2 的裸 `provider` 和 `account` 仍是保留并拒绝的权限。API v3 只允许 manifest v2 Component 明确声明
 `provider.catalog`、`provider.playback`、`provider.recommendation`、`provider.lyrics` 和 `provider.account`。

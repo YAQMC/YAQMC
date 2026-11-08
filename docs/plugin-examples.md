@@ -39,6 +39,9 @@ Enable **Ink core** before **Ink accent**. Sakura and Night cannot be active tog
 
 v2 example sources: `examples/plugins/script-actions` (settings + context/player-bar actions) and
 `examples/plugins/script-network` (host-proxied `https://example.com` only). Pack with `npm run plugin:pack`.
+
+The API v4 example `examples/plugins/script-pages` registers a "Listening log" page, a sidebar entry that opens it,
+and a page button that toggles a Home layout preference (radar first). See the [Plugin Pages API](plugin-pages-api.md).
 Provider Component source is in `examples/plugins/provider-catalog-rust` and
 `examples/plugins/provider-platform-rust`. Install the same package on supported Windows or Linux architectures;
 neither contains a native binary. The complete example uses `accounts.example.com` only and its OAuth callback is

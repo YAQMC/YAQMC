@@ -15,13 +15,18 @@ Core 标识仍是 `org.yaqmc.desktop`；Electron `userData` 不存音乐库、�
 | Core 与 host 日志        | `%LOCALAPPDATA%\org.yaqmc.desktop\logs`      | `$XDG_DATA_HOME/org.yaqmc.desktop/logs`（回退 `~/.local/share/org.yaqmc.desktop/logs`）                  |
 | 本地 API 配置            | `%APPDATA%\org.yaqmc.desktop\local-api.json` | `$XDG_CONFIG_HOME/org.yaqmc.desktop/local-api.json`（回退 `~/.config/org.yaqmc.desktop/local-api.json`） |
 
+macOS 上，Core 将曲库、队列、设置、插件与 `local-api.json` 保存在 `~/Library/Application Support/org.yaqmc.desktop`，
+媒体与封面缓存位于 `~/Library/Caches/org.yaqmc.desktop`，日志位于 `~/Library/Logs/org.yaqmc.desktop`；不读取 XDG 变量。
+详见 [macOS](macos.md)。
+
 SQLite 数据库名为 `library.sqlite3`，位于 Core 数据目录。YAQMC 或残留
 `yaqmc-core` 进程运行时不得复制或删除它，WAL sidecar 可能仍在使用。
 
 ## Electron/Chromium profile
 
 打包后的 Electron 在 Windows 使用 `%APPDATA%\YAQMC`，Linux 使用
-`$XDG_CONFIG_HOME/YAQMC`（回退 `~/.config/YAQMC`）。未打包开发模式把
+`$XDG_CONFIG_HOME/YAQMC`（回退 `~/.config/YAQMC`），macOS 使用
+`~/Library/Application Support/YAQMC`。未打包开发模式把
 `YAQMC` 换成 `@yaqmc/desktop`。这些目录包含 Chromium/GPU cache、Local
 Storage 等 renderer 状态，不是权威 Core 数据库。
 

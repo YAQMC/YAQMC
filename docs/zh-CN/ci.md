@@ -2,37 +2,37 @@
 
 > **简体中文** | [English](../ci.md)
 
-本文说明桌面端与 Android 的 GitHub Actions 流水线。Windows 与 Linux 正式版不做代码签名，Android 使用长期保存的正式证书签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
+本文说明桌面端与 Android 的 GitHub Actions 流水线。Windows 正式版不做代码签名，Linux 包不做代码签名，macOS 默认使用 ad-hoc 签名（启用发布签名时例外），Android 使用长期保存的正式证书签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
 
 ## 工作流
 
-| 工作流          | 文件                                      | 触发条件                            | 结果                                                             |
-| --------------- | ----------------------------------------- | ----------------------------------- | ---------------------------------------------------------------- |
-| CI              | `.github/workflows/ci.yml`                | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                  |
-| Build artifacts | `.github/workflows/package-artifacts.yml` | 仅手动触发                          | 未签名 Windows/Linux 包与 Android debug APK，仅上传 Actions 产物 |
-| YAQMC 发布      | `.github/workflows/electron-release.yml`  | `v*` tag、手动触发                  | 正式版、beta/nightly Release；手动分支构建为源码构建草稿         |
+| 工作流          | 文件                                      | 触发条件                            | 结果                                                                            |
+| --------------- | ----------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| CI              | `.github/workflows/ci.yml`                | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                                 |
+| Build artifacts | `.github/workflows/package-artifacts.yml` | 仅手动触发                          | Windows/Linux 包、ad-hoc 签名 macOS 包与 Android debug APK，仅上传 Actions 产物 |
+| YAQMC 发布      | `.github/workflows/electron-release.yml`  | `v*` tag、手动触发                  | 正式版、beta/nightly Release；手动分支构建为源码构建草稿                        |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
 ## 手动打包与下载
 
 推送代码后，打开 **Actions → Build artifacts → Run workflow**，选择分支，以及 `all`、
-`windows`、`linux` 或 `android`。完成后在该次运行的 **Artifacts** 区域下载安装包，保留 14 天。
+`windows`、`linux`、`macos` 或 `android`。完成后在该次运行的 **Artifacts** 区域下载安装包，保留 14 天。
 这个独立工作流不会因推送自动启动，也不会创建或发布 GitHub Release。
 
 桌面打包复用现有 x64/arm64 矩阵与脚本；`ci` 使用 ThinLTO 和八个 codegen unit，
 `production` 使用 Fat LTO 和一个 codegen unit。Windows 产物包含安装版与便携 EXE；
-Linux 产物包含 AppImage、deb、rpm、tar.gz。Android 单独构建自己的前端与 arm64-v8a、x86_64
+Linux 产物包含 AppImage、deb、rpm、tar.gz；macOS 产物按架构提供带 ad-hoc 签名的 dmg 与 zip。Android 单独构建自己的前端与 arm64-v8a、x86_64
 测试 APK，使用 debug 签名，不依赖正式签名密钥；不能覆盖由其他密钥签名的 APK。
 
 ## 门禁与打包矩阵
 
-每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux/Windows 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux、Windows 与 macOS 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查，并在 `macos-15-intel` 上运行 x64 原生 Core 单元测试及 arm64 交叉编译检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux、Windows、macOS 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
 
 - Pull request 打包 Windows x64 与 Linux x64。
-- 推送 `main` 打包 Windows x64/arm64 与 Linux x64/arm64。
-- 手动运行可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
-- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`。
+- 推送 `main` 打包 Windows x64/arm64、Linux x64/arm64 与 macOS arm64/x64。
+- 手动运行可选 `windows`、`linux`、`macos` 或 `all`，以及 `ci` 或 `production` 优化配置。
+- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`；macOS x64 在 `macos-15-intel` 原生构建，arm64 在同一 Runner 上交叉编译，以绕开 ARM runner 容量故障。这条路径不执行 Apple 芯片原生测试。
 - 不再构建或发布 Windows i686。
 
 过时的 pull request 运行会被取消；推送 `main`、tag 和手动打包不会中途取消。
@@ -41,7 +41,7 @@ Linux 产物包含 AppImage、deb、rpm、tar.gz。Android 单独构建自己的
 
 `frontend-build` 上传 `yaqmc-frontend-dist-<sha>`。每个打包任务下载该精确产物，按目标三元组编译 `yaqmc-core`，暂存 Core 可执行文件，构建 Electron Main/预加载代码，再以禁止发布模式调用 electron-builder。
 
-Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
+Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。macOS 按架构产出 `.dmg` 与 `.zip`；`verify-macos-package.mjs` 检查应用与内置 Core 均为对应架构的单架构 Mach-O，且签名与构建模式一致。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
 Android 发布任务会单独构建 `dist-android` renderer，将共享 Rust Core 编译为 `arm64-v8a`，同步 Capacitor，并使用 JDK 21、SDK 36 与 NDK 28.2.13676358 组装压缩后的正式 APK。Android 不复用桌面 renderer artifact，因为两种宿主的功能边界不同。
 
@@ -57,6 +57,14 @@ Windows 可能提示未知发布者或 SmartScreen 警告。
 
 显式本地 `--require-signing true` 仍使用独立的 `electron-builder.release.yml`
 强制签名配置，但这不是当前远端发布工作流的策略。
+
+## macOS 发布签名
+
+macOS 安装包默认仅为临时（ad-hoc）签名，不启用强化运行时与公证，因此发布不依赖 Apple 开发者账号。将仓库变量
+`YAQMC_MACOS_SIGNING` 设为 `true` 后，macOS 打包任务改为 Developer ID 签名、强化运行时与公证，预检会要求 `release-signing`
+环境中存在 `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_API_KEY_P8_BASE64`、`APPLE_API_KEY_ID` 与 `APPLE_API_ISSUER`。
+公证密钥写入临时文件并在打包后删除；编译步骤不会获得 Apple 凭据；发布说明会写明使用的模式。授权与当前验证状态见
+[macOS](macos.md)。
 
 ## Android 发布签名
 
@@ -86,7 +94,7 @@ artifact 都包含唯一的 `build-info-<os>-<arch>.json`，记录有效配置�
 codegen unit、Rust 目标、Node/Electron 版本与 Git 身份。Release 组装器在摊平
 资产前要求该 identity 与对应源码 commit 一致。
 
-Cargo 缓存按操作系统、Rust 目标、工具链类别、`Cargo.lock` 和配置类别分键。Pull request 可以恢复缓存，但只有 `main` 推送、tag 和手动运行会保存。恢复出的缓存是不可信输入，冷缓存构建仍必须成功。
+Cargo 缓存按操作系统、Rust 目标、工具链类别、`Cargo.lock` 和配置类别分键。打包缓存额外包含 runner 架构，隔离宿主构建产物。Pull request 可以恢复缓存，但只有 `main` 推送、tag 和手动运行会保存。恢复出的缓存是不可信输入，冷缓存构建仍必须成功。
 
 ## 产物与发布名
 

@@ -41,6 +41,8 @@ Windows/Linux 架构且不含原生二进制。完整示例只使用 `accounts.e
 它返回 Host 缓存配方，由 Core 消费不透明音源；媒体 URL/路径不会进入 renderer。敌对探测夹具仅用于自动测试，不要作为
 用户插件启用。
 
+API v4 示例 `examples/plugins/script-pages` 注册一个“Listening log”页面、一个打开该页面的侧栏入口，以及一个切换首页布局偏好（雷达优先）的页面按钮。见[插件页面 API](plugin-pages-api.md)。
+
 ## 未包含
 
 插件市场、远程更新、原生模块、HTML 入口、任意 `fetch`、真实账号集成和已验证发行方声明。

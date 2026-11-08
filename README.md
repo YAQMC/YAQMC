@@ -65,6 +65,12 @@ Linux 用户：
   yay -S yaqmc-bin
   ```
 
+macOS 用户（macOS 12 或更高版本）：
+
+- Apple 芯片（M 系列）：选择 `macos-arm64` 的 `.dmg`；Intel Mac：选择 `macos-x64`。
+- 除非 Release 说明写明已公证，否则 macOS 应用仅为临时签名，首次打开需在“系统设置 → 隐私与安全性”中选择“仍要打开”。
+- macOS 暂不支持应用内更新与“正在播放”媒体键，实机验收尚未完成，详见 [macOS](docs/zh-CN/macos.md)。
+
 Android 用户：
 
 - Android 8.0 或更高版本的 ARM64 手机和平板：选择 `android-arm64-v8a` APK。

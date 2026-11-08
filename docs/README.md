@@ -36,6 +36,7 @@ This directory contains the public user, tester, contributor, and release docume
   [security](plugin-security.md), and [development](plugin-development.md)
 - [Example plugins](plugin-examples.md), [style API](plugin-style-api.md), and
   [scene API](plugin-scene-api.md)
+- [Plugins page and plugin store](plugin-store.md)
 
 ## Testing and release
 

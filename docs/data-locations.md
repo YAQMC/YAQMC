@@ -16,6 +16,10 @@ cache, logs, or credentials.
 | Core and host logs                | `%LOCALAPPDATA%\org.yaqmc.desktop\logs`      | `$XDG_DATA_HOME/org.yaqmc.desktop/logs` (fallback `~/.local/share/org.yaqmc.desktop/logs`)                  |
 | Local API config                  | `%APPDATA%\org.yaqmc.desktop\local-api.json` | `$XDG_CONFIG_HOME/org.yaqmc.desktop/local-api.json` (fallback `~/.config/org.yaqmc.desktop/local-api.json`) |
 
+On macOS, Core uses `~/Library/Application Support/org.yaqmc.desktop` for the library, queue, settings, plugins
+and `local-api.json`, `~/Library/Caches/org.yaqmc.desktop` for media and artwork, and
+`~/Library/Logs/org.yaqmc.desktop` for logs; XDG variables are ignored. See [macOS](macos.md).
+
 The SQLite database is `library.sqlite3` under the Core data directory. Never
 copy or delete it while YAQMC or a leftover `yaqmc-core` process is running;
 WAL sidecars may still be active.
@@ -23,7 +27,8 @@ WAL sidecars may still be active.
 ## Electron/Chromium profile
 
 Packaged Electron stores Chromium session data under `%APPDATA%\YAQMC` on
-Windows or `$XDG_CONFIG_HOME/YAQMC` (fallback `~/.config/YAQMC`) on Linux.
+Windows, `$XDG_CONFIG_HOME/YAQMC` (fallback `~/.config/YAQMC`) on Linux, or
+`~/Library/Application Support/YAQMC` on macOS.
 Unpackaged development uses `@yaqmc/desktop` instead of `YAQMC`. These folders
 contain Chromium cache, GPU cache, Local Storage, and other renderer state;
 they are not the authoritative Core database.
