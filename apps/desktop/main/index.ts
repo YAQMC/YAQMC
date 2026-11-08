@@ -1066,8 +1066,6 @@ function createMainWindow(root: string): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 1000,
-    minHeight: 680,
     show: !(__YAQMC_QA_BUILD__ && smoke),
     backgroundColor: '#11120f',
     // macOS keeps its native traffic lights over the app chrome; elsewhere YAQMC draws its own.

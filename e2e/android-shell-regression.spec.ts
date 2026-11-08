@@ -92,11 +92,11 @@ for (const viewport of viewports) {
       const portraitPhone = viewport.layout === 'phone-portrait';
       const navigation = page.locator(portraitPhone ? '.android-bottom-nav' : '.sidebar__nav');
       await expect(navigation).toBeVisible();
-      await expect(navigation.getByRole('button')).toHaveCount(4);
+      await expect(navigation.getByRole('button')).toHaveCount(5);
       // These are absent from the actual Android render branch, not removed
       // after mounting by this test to make a CSS screenshot look correct.
       await expect(page.locator('.sidebar__section-label')).toHaveCount(0);
-      for (const name of ['Home', 'Explore', 'Library', 'Search']) {
+      for (const name of ['Home', 'Explore', 'Library', 'Search', 'Plugins']) {
         await expectTouchTarget(navigation.getByRole('button', { name, exact: true }));
       }
 

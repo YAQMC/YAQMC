@@ -163,3 +163,13 @@
   content: '';
   -webkit-app-region: drag;
 }
+
+@media (max-width: 959px), (max-height: 599px) {
+  :root[data-platform='macos'] .app-shell:not([data-host-kind='android']) .topbar {
+    padding-left: max(12px, calc(96px - var(--shell-sidebar-width)));
+  }
+
+  :root[data-platform='macos'] .lyrics-stage:not([data-fullscreen]) {
+    --safe-top: 44px;
+  }
+}

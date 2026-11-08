@@ -402,7 +402,7 @@
 /* Phone portrait: the preset's reusable widgets are rearranged into a true
  * single-column player. Only the runtime geometry changes; presets and
  * playback/lyric state stay shared with desktop. */
-@media (orientation: portrait) and (max-width: 599px) {
+@media (max-width: 599px) {
   .app-shell .lyrics-scene[data-mode='runtime'] {
     --phone-cover-size: min(calc(100vw - 48px), 26dvh, 240px);
     --phone-player-top: calc(var(--safe-top) + 54px);
@@ -621,7 +621,7 @@
  * scrolling lyric column. This deliberately differs from tablet landscape. */
 @media (orientation: landscape) and (max-height: 599px) {
   .app-shell .lyrics-scene[data-mode='runtime'] {
-    --landscape-left-width: min(40vw, 390px);
+    --landscape-left-width: clamp(160px, 40vw, 390px);
     --landscape-player-top: calc(var(--safe-top) + 46px);
   }
 
@@ -948,6 +948,12 @@
 .app-shell .lyrics-scene[data-adaptive-portrait] .lyrics-stage__static-line {
   font-size: inherit;
   line-height: var(--lyrics-line-height);
+}
+
+/* Playback buttons and the seek row keep their interactive footprint even
+ * when proportional preset geometry becomes shorter than the controls. */
+.app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget[data-widget='transport'] {
+  min-height: 100px;
 }
 
 @media (orientation: portrait), (max-width: 760px) {

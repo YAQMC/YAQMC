@@ -74,6 +74,10 @@
 }
 
 .app-shell {
+  --shell-sidebar-width: 212px;
+  --shell-player-height: calc(92px + var(--safe-bottom));
+  --shell-nav-height: 0px;
+
   position: relative;
   display: grid;
   grid-template-columns: 212px minmax(0, 1fr);
@@ -91,24 +95,24 @@
   --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
 }
 
-.app-shell[data-host-kind='android'] {
+.app-shell:where([data-host-kind='android']) {
   height: 100dvh;
   max-height: 100dvh;
   grid-template-rows: minmax(0, 1fr) calc(92px + var(--safe-bottom));
   overflow: hidden;
 }
 
-.app-shell[data-host-kind='android'] > .sidebar {
+.app-shell:where([data-host-kind='android']) > .sidebar {
   padding-top: max(20px, calc(12px + var(--safe-top)));
   padding-bottom: max(14px, calc(8px + var(--safe-bottom)));
   padding-left: max(12px, var(--safe-left));
 }
 
-.app-shell[data-host-kind='android'] > .content-shell {
+.app-shell:where([data-host-kind='android']) > .content-shell {
   grid-template-rows: calc(54px + var(--safe-top)) minmax(0, 1fr);
 }
 
-.app-shell[data-host-kind='android'] .topbar {
+.app-shell:where([data-host-kind='android']) .topbar {
   padding-top: var(--safe-top);
   padding-right: max(28px, var(--safe-right));
 }
@@ -150,7 +154,7 @@
   overflow-wrap: anywhere;
 }
 
-.app-shell[data-host-kind='android'] > .player-bar {
+.app-shell:where([data-host-kind='android']) > .player-bar {
   padding-right: max(18px, var(--safe-right));
   padding-bottom: calc(10px + var(--safe-bottom));
 }
@@ -204,6 +208,7 @@
 
 .sidebar__brand {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   height: 34px;
@@ -244,10 +249,13 @@
   flex-direction: column;
   gap: 3px;
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .sidebar__item {
   position: relative;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -303,6 +311,7 @@
 }
 
 .sidebar__profile {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -377,6 +386,7 @@
   position: relative;
   z-index: 8;
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   padding: 0 28px;
@@ -410,10 +420,12 @@
 
 .topbar__tools {
   gap: 10px;
+  min-width: 0;
 }
 
 .topbar__window-controls {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 2px;
   margin-left: 6px;
@@ -431,6 +443,7 @@
   align-items: center;
   gap: 8px;
   width: 192px;
+  min-width: 0;
   height: 32px;
   padding: 0 8px 0 10px;
   border: 1px solid var(--border);
@@ -453,6 +466,10 @@
 
 .search-trigger span {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-trigger kbd {
@@ -810,6 +827,7 @@
 
 @media (max-width: 1120px) {
   .app-shell:where(:not([data-host-kind='android'])) {
+    --shell-sidebar-width: 196px;
     grid-template-columns: 196px minmax(0, 1fr);
   }
 
@@ -842,10 +860,10 @@
   }
 }
 
-/* Browser-only band (Electron's minWidth is 1000): keep the desktop structure but
- * give the player bar room before the compact rail takes over below 840px. */
+/* Keep room for playback controls before the compact rail takes over. */
 @media (max-width: 999px) {
   .app-shell:where(:not([data-host-kind='android'])) {
+    --shell-sidebar-width: 176px;
     grid-template-columns: 176px minmax(0, 1fr);
   }
 
@@ -858,9 +876,12 @@
   }
 }
 
-/* Phone portrait (any host): one content column plus persistent player and nav. */
-@media (orientation: portrait) and (max-width: 599px) {
+/* Narrow viewports use one content column plus persistent player and navigation. */
+@media (max-width: 599px) {
   .app-shell {
+    --shell-sidebar-width: 0px;
+    --shell-player-height: 72px;
+    --shell-nav-height: calc(64px + var(--safe-bottom));
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) 72px calc(64px + var(--safe-bottom));
   }
@@ -935,6 +956,10 @@
     min-height: 44px;
   }
 
+  .app-shell .search-trigger kbd {
+    display: none;
+  }
+
   .app-shell .main-content {
     min-height: 0;
     padding-bottom: 8px;
@@ -1000,6 +1025,9 @@
 @media (orientation: portrait) and (min-width: 600px) and (max-width: 959px),
   (orientation: landscape) and (min-width: 600px) and (max-width: 839px) and (min-height: 600px) {
   .app-shell {
+    --shell-sidebar-width: calc(72px + var(--safe-left));
+    --shell-player-height: calc(76px + var(--safe-bottom));
+    --shell-nav-height: 0px;
     grid-template-columns: calc(72px + var(--safe-left)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) calc(76px + var(--safe-bottom));
   }
@@ -1088,9 +1116,12 @@
   }
 }
 
-/* Phone landscape (any host): compact rail and compact player, never desktop chrome. */
-@media (orientation: landscape) and (min-width: 600px) and (max-height: 599px) {
+/* Short landscape windows keep a scrolling rail to leave room for page content. */
+@media (orientation: landscape) and (max-height: 599px) {
   .app-shell {
+    --shell-sidebar-width: calc(60px + var(--safe-left));
+    --shell-player-height: calc(62px + var(--safe-bottom));
+    --shell-nav-height: 0px;
     grid-template-columns: calc(60px + var(--safe-left)) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) calc(62px + var(--safe-bottom));
   }
@@ -1158,6 +1189,10 @@
 
   .app-shell .topbar__tools {
     gap: 4px;
+  }
+
+  .app-shell .topbar__account {
+    display: none;
   }
 
   .app-shell .page {
@@ -1310,6 +1345,8 @@
 /* Android tablet landscape reuses desktop structure with compact dimensions. */
 @media (orientation: landscape) and (min-width: 840px) and (max-width: 1199px) and (min-height: 600px) {
   .app-shell[data-host-kind='android'] {
+    --shell-sidebar-width: 184px;
+    --shell-player-height: calc(82px + var(--safe-bottom));
     grid-template-columns: 184px minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) calc(82px + var(--safe-bottom));
   }

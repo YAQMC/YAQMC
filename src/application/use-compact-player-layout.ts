@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 // Layout only. Never use this query to choose or restart an authorization protocol.
-// Mirrors the compact shell blocks in styles/shell.css; Electron's 1000x680 minimum never matches.
+// Mirrors the compact shell blocks in styles/shell.css, including narrow landscape windows.
 export const COMPACT_PLAYER_QUERY =
-  '(orientation: portrait) and (max-width: 959px), (orientation: landscape) and (max-height: 599px), (orientation: landscape) and (max-width: 839px)';
+  '(max-width: 599px), (orientation: portrait) and (max-width: 959px), (orientation: landscape) and (max-height: 599px), (orientation: landscape) and (max-width: 839px)';
 
 export function useCompactPlayerLayout(): boolean {
   const [compact, setCompact] = useState(() =>

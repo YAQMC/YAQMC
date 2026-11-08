@@ -229,8 +229,8 @@ export function LyricsScene({
     [editor, preset, portrait],
   );
   const customLayout = portrait && Boolean(preset.portraitScene);
-  const adaptivePortrait = portrait && !isAndroidRuntime();
-  const compactLayout = compact && !customLayout && !adaptivePortrait;
+  const adaptivePortrait = portrait && !isAndroidRuntime() && !compact;
+  const compactLayout = compact && !customLayout;
   // The editor and desktop retain preset geometry. A compact runtime reuses the
   // same widgets in normal grid flow, so metadata cannot cover the transport.
   const boxStyle = (box: Parameters<typeof widgetBoxStyle>[0]): CSSProperties =>

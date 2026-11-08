@@ -2996,9 +2996,23 @@
   }
 }
 
-/* Android layouts use both axes: width alone cannot distinguish a phone in
+@media (max-width: 599px), (orientation: landscape) and (max-height: 599px) {
+  .app-shell .detail-hero__actions .button {
+    min-height: 44px;
+  }
+
+  .app-shell .detail-hero__icon-action,
+  .app-shell .detail-hero__icon-action > .icon-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Responsive layouts use both axes: width alone cannot distinguish a phone in
  * landscape from a tablet or a compact desktop window. */
-@media (orientation: portrait) and (max-width: 599px) {
+@media (max-width: 599px) {
   .app-shell .page {
     width: 100%;
     max-width: none;
