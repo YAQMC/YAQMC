@@ -8,6 +8,7 @@ const ROW = 58;
 const HEADER = 34;
 const VIEW = 600;
 let scrollTop = 0;
+let listOffset = 0;
 
 function box(top: number, height: number): DOMRect {
   return {
@@ -28,6 +29,7 @@ const tracks = (count: number): Song[] =>
 describe('TrackList windowing', () => {
   beforeEach(() => {
     scrollTop = 0;
+    listOffset = 0;
     // jsdom has no layout: give the scroll parent a 600 px viewport and rows a fixed height.
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: Element,
@@ -35,7 +37,9 @@ describe('TrackList windowing', () => {
       const element = this as HTMLElement;
       if (element.style.overflowY === 'auto') return box(0, VIEW);
       const index = element.dataset.rowIndex;
-      return index === undefined ? box(0, 0) : box(HEADER + Number(index) * ROW - scrollTop, ROW);
+      return index === undefined
+        ? box(0, 0)
+        : box(HEADER + listOffset + Number(index) * ROW - scrollTop, ROW);
     });
   });
 
@@ -70,5 +74,50 @@ describe('TrackList windowing', () => {
       </div>,
     );
     expect(screen.getAllByRole('row')).toHaveLength(201);
+  });
+
+  it('recovers after a deeply scrolled list shrinks', () => {
+    const list = (count: number) => (
+      <div style={{ overflowY: 'auto' }} data-testid="scroller">
+        <TrackList tracks={tracks(count)} />
+      </div>
+    );
+    const view = render(list(10_000));
+    scrollTop = 9_000 * ROW;
+    act(() => fireEvent.scroll(screen.getByTestId('scroller')));
+    view.rerender(list(300));
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(1);
+
+    scrollTop = 0;
+    act(() => fireEvent.scroll(screen.getByTestId('scroller')));
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('data-row-index', '0');
+  });
+
+  it('keeps measurable rows when the list starts below the viewport', () => {
+    listOffset = 5_000;
+    render(
+      <div style={{ overflowY: 'auto' }} data-testid="scroller">
+        <TrackList tracks={tracks(300)} />
+      </div>,
+    );
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(1);
+    scrollTop = 5_000;
+    act(() => fireEvent.scroll(screen.getByTestId('scroller')));
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('data-row-index', '0');
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(3);
+  });
+
+  it('recovers when the viewport moves past the end and then returns', () => {
+    render(
+      <div style={{ overflowY: 'auto' }} data-testid="scroller">
+        <TrackList tracks={tracks(300)} />
+      </div>,
+    );
+    scrollTop = 1_000 * ROW;
+    act(() => fireEvent.scroll(screen.getByTestId('scroller')));
+    expect(screen.getAllByRole('row').length).toBeGreaterThan(1);
+    scrollTop = 0;
+    act(() => fireEvent.scroll(screen.getByTestId('scroller')));
+    expect(screen.getAllByRole('row')[1]).toHaveAttribute('data-row-index', '0');
   });
 });

@@ -45,8 +45,15 @@ export function useWindowedRows(count: number): RowWindow {
       if (!(rowHeight > 0)) return;
       const view = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
       const top = firstBox.top - Number(first.dataset.rowIndex) * rowHeight;
-      const start = Math.max(0, Math.floor((view.top - OVERSCAN_PX - top) / rowHeight));
-      const end = Math.min(count, Math.ceil((view.bottom + OVERSCAN_PX - top) / rowHeight));
+      // Keep two measurement anchors even while the list is outside the viewport.
+      const start = Math.min(
+        count - 2,
+        Math.max(0, Math.floor((view.top - OVERSCAN_PX - top) / rowHeight)),
+      );
+      const end = Math.min(
+        count,
+        Math.max(start + 2, Math.ceil((view.bottom + OVERSCAN_PX - top) / rowHeight)),
+      );
       setState((current) =>
         current.start === start && current.end === end && current.rowHeight === rowHeight
           ? current
@@ -65,8 +72,8 @@ export function useWindowedRows(count: number): RowWindow {
   }, [list, count, windowed]);
 
   if (!windowed) return { start: 0, end: count, before: 0, after: 0, setContainer };
-  const start = Math.min(state.start, count);
-  const end = Math.min(Math.max(state.end, start), count);
+  const start = Math.min(state.start, count - 2);
+  const end = Math.min(Math.max(state.end, start + 2), count);
   return {
     start,
     end,
