@@ -409,4 +409,28 @@ describe('QueuePanel', () => {
       screen.queryByRole('button', { name: /^More queue actions for (three|four)$/ }),
     ).not.toBeInTheDocument();
   });
+
+  it('windows long upcoming queues while preserving list positions and total size', () => {
+    const entries = Array.from({ length: 302 }, (_, index) => ({
+      id: `entry-${index}`,
+      track: track(`song-${index}`),
+    }));
+    usePlayerStore.setState({
+      queue: entries.map((entry) => entry.track),
+      queueEntries: entries,
+      currentIndex: 0,
+      currentQueueEntryId: entries[0]!.id,
+      upcomingQueueEntryIds: entries.slice(1).map((entry) => entry.id),
+      queueOpen: true,
+    });
+
+    render(<QueuePanel />);
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows.length).toBeLessThan(70);
+    expect(rows[0]).toHaveAttribute('aria-posinset', '1');
+    expect(rows[0]).toHaveAttribute('aria-setsize', '301');
+    expect(rows[0]).toHaveAttribute('data-row-index', '0');
+    expect(rows.at(-1)).toHaveAttribute('aria-posinset', String(rows.length));
+  });
 });

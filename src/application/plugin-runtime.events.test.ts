@@ -20,6 +20,8 @@ import {
 } from './plugin-runtime';
 import { usePlayerStore } from './player-store';
 import { usePreferencesStore } from './preferences';
+import { clearPluginSongBadges, songBadgesForProvider } from './plugin-song-badges';
+import { invalidatePluginAssets, resolveSceneAssetUrl } from './plugin-asset';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const logErrorMock = vi.hoisted(() => vi.fn());
@@ -160,9 +162,134 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     // Unmount before the bridge mock is reset: cleanup must keep observing the
     // same host contract that live code sees.
     cleanup();
+    clearPluginSongBadges();
+    invalidatePluginAssets();
     vi.unstubAllGlobals();
     invokeMock.mockReset();
     logErrorMock.mockReset();
+  });
+
+  it('retires cached assets immediately on disable and refreshes updated packages', async () => {
+    let version = '1';
+    let enabled = true;
+    let safeMode = false;
+    let serial = 0;
+    URL.createObjectURL = vi.fn(() => `blob:resource-${++serial}`);
+    URL.revokeObjectURL = vi.fn();
+    const disabled = deferred<undefined>();
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_active_resources') return Promise.resolve(emptyResources(safeMode));
+      if (method === 'plugin_list')
+        return Promise.resolve([
+          {
+            id: GRANTED,
+            version,
+            packageSha256: version,
+            enabled,
+            status: enabled ? 'active' : 'disabled',
+            grantedPermissions: [],
+          },
+        ]);
+      if (method === 'plugin_read_asset')
+        return Promise.resolve({ mime: 'image/png', dataBase64: btoa('image') });
+      if (method === 'plugin_set_enabled') {
+        enabled = false;
+        return disabled.promise;
+      }
+      return Promise.resolve(undefined);
+    });
+    const asset = { kind: 'plugin' as const, path: 'assets/cover.png' };
+    await applyPluginResources();
+    const first = await resolveSceneAssetUrl(asset, GRANTED);
+    expect(first).toBe('blob:resource-1');
+    version = '2';
+    await applyPluginResources();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(first);
+    const second = await resolveSceneAssetUrl(asset, GRANTED);
+    expect(second).toBe('blob:resource-2');
+    const mutation = setPluginEnabled(GRANTED, false);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(second);
+    expect(await resolveSceneAssetUrl(asset, GRANTED)).toBeNull();
+    disabled.resolve(undefined);
+    await mutation;
+    expect(await resolveSceneAssetUrl(asset, GRANTED)).toBeNull();
+    enabled = true;
+    await applyPluginResources();
+    const third = await resolveSceneAssetUrl(asset, GRANTED);
+    safeMode = true;
+    await applyPluginResources();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(third);
+    expect(await resolveSceneAssetUrl(asset, GRANTED)).toBeNull();
+  });
+
+  it('loads declarative badges without workers and clears them in safe mode', async () => {
+    const songBadges = [
+      {
+        pluginId: GRANTED,
+        pluginName: 'Test',
+        id: 'source',
+        providerIds: ['test.catalog'],
+        label: 'Test catalog',
+      },
+    ];
+    invokeMock.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'plugin_active_resources' ? { ...emptyResources(), songBadges } : [],
+      ),
+    );
+    await applyPluginResources();
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(
+      songBadgesForProvider({ providerId: 'test.catalog', profileId: 'default', trackId: 'one' }),
+    ).toHaveLength(1);
+    invokeMock.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'plugin_active_resources' ? { ...emptyResources(true), songBadges } : [],
+      ),
+    );
+    await applyPluginResources();
+    expect(
+      songBadgesForProvider({ providerId: 'test.catalog', profileId: 'default', trackId: 'one' }),
+    ).toEqual([]);
+  });
+
+  it('clears badges immediately on disable and cannot restore them from a stale snapshot', async () => {
+    const songBadges = [
+      {
+        pluginId: GRANTED,
+        pluginName: 'Test',
+        id: 'source',
+        providerIds: ['test.catalog'],
+        label: 'Test catalog',
+      },
+    ];
+    const track = { providerId: 'test.catalog', profileId: 'default', trackId: 'one' };
+    invokeMock.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'plugin_active_resources' ? { ...emptyResources(), songBadges } : [],
+      ),
+    );
+    await applyPluginResources();
+    expect(songBadgesForProvider(track)).toHaveLength(1);
+    const stale = deferred<ReturnType<typeof emptyResources> & { songBadges: typeof songBadges }>();
+    const disabled = deferred<undefined>();
+    let resourceCalls = 0;
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return disabled.promise;
+      if (method === 'plugin_active_resources')
+        return ++resourceCalls === 1 ? stale.promise : Promise.resolve(emptyResources());
+      return Promise.resolve([]);
+    });
+    const refresh = applyPluginResources();
+    const mutation = setPluginEnabled(GRANTED, false);
+    expect(songBadgesForProvider(track)).toEqual([]);
+    stale.resolve({ ...emptyResources(), songBadges });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(songBadgesForProvider(track)).toEqual([]);
+    disabled.resolve(undefined);
+    await Promise.all([refresh, mutation]);
+    expect(songBadgesForProvider(track)).toEqual([]);
   });
 
   it('updates one worker, preserves the other, and does not reactivate the committed worker', async () => {

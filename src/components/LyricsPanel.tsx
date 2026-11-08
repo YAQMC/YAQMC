@@ -2,6 +2,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -20,6 +21,8 @@ import {
   LYRICS_STAGE_ENTER_ANIMATION,
   LYRICS_STAGE_EXIT_ANIMATION,
   LYRICS_STAGE_TRANSITION_MS,
+  lyricsStageResumeElapsedMs,
+  prefersReducedMotion,
   useLyricsStageStore,
   type LyricsStageState,
 } from '../application/lyrics-stage-machine';
@@ -32,6 +35,7 @@ import { ActionMenu } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
+import { isAndroidRuntime } from '../application/host-capabilities';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 import { useLyricsTransportDefinition } from '../application/use-lyrics-transport';
 import { BUILTIN_TRANSPORT_WINDOW_ID } from '../application/lyrics-transport';
@@ -97,7 +101,7 @@ function LyricsPanelStage({
   stageState,
 }: LyricsPanelProps & { stageState: LyricsStageState }) {
   noteLyricsPanelCommit();
-  const compact = useCompactPlayerLayout(true);
+  const compact = useCompactPlayerLayout();
   const stage = useRef<HTMLElement>(null);
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
   useLayoutEffect(() => {
@@ -185,6 +189,12 @@ function LyricsPanelStage({
   const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
   const fontWeight = usePreferencesStore((state) => state.lyrics.fontWeight);
   const amll = usePreferencesStore((state) => state.amll);
+  // DOM blur/scale are costly on phone WebViews; the Android native renderer honours the settings.
+  const webCompactAmll = useMemo(
+    () =>
+      compact && !isAndroidRuntime() ? { ...amll, enableBlur: false, enableScale: false } : amll,
+    [amll, compact],
+  );
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
@@ -343,17 +353,63 @@ function LyricsPanelStage({
     return () => stageElement.removeEventListener('animationend', settle);
   }, []);
 
-  useEffect(() => {
-    const generation = useLyricsStageStore.getState().generation;
-    if (stage.current) stage.current.dataset.stageGeneration = String(generation);
-    if (stageState !== 'entering' && stageState !== 'exiting') return;
+  // Zustand notifies synchronously, before React commits the new data-stage, so this still
+  // sees the interrupted transition's live position.
+  const resumeHiddenFraction = useRef<number | null>(null);
+  useLayoutEffect(
+    () =>
+      useLyricsStageStore.subscribe((next, previous) => {
+        if (next.stage === previous.stage) return;
+        const node = stage.current;
+        const moving = previous.stage === 'entering' || previous.stage === 'exiting';
+        resumeHiddenFraction.current = node && moving ? stageHiddenFraction(node) : null;
+      }),
+    [],
+  );
+
+  // The parent's requestOpen() runs after this layout effect and bumps the generation without
+  // changing stageState, so the generation is an explicit dependency.
+  const stageGeneration = useLyricsStageStore((state) => state.generation);
+  useLayoutEffect(() => {
+    const node = stage.current;
+    const generation = stageGeneration;
+    if (node) {
+      node.dataset.stageGeneration = String(generation);
+      delete node.dataset.stageArmed;
+      node.style.removeProperty('animation-delay');
+    }
+    const hiddenFraction = resumeHiddenFraction.current;
+    resumeHiddenFraction.current = null;
+    if (!node || (stageState !== 'entering' && stageState !== 'exiting')) return;
     const animationName =
       stageState === 'entering' ? LYRICS_STAGE_ENTER_ANIMATION : LYRICS_STAGE_EXIT_ANIMATION;
-    const timer = window.setTimeout(() => {
+    const finish = () =>
       useLyricsStageStore.getState().notifyTransitionFinished(animationName, generation);
-    }, LYRICS_STAGE_TRANSITION_MS + 80);
-    return () => window.clearTimeout(timer);
-  }, [stageState]);
+    if (prefersReducedMotion()) {
+      finish();
+      return;
+    }
+
+    const elapsed = lyricsStageResumeElapsedMs(stageState, hiddenFraction);
+    if (elapsed > 0) node.style.setProperty('animation-delay', `-${elapsed}ms`);
+    let timer: number | null = null;
+    const frames: number[] = [];
+    const arm = () => {
+      node.dataset.stageArmed = '';
+      timer = window.setTimeout(finish, LYRICS_STAGE_TRANSITION_MS - elapsed + 80);
+    };
+    if (stageState === 'entering' && hiddenFraction === null) {
+      // A fresh enter mounts the whole scene. Hold it offscreen for two frames so mount effects,
+      // layer promotion and first raster finish before any visible motion starts.
+      frames.push(requestAnimationFrame(() => frames.push(requestAnimationFrame(arm))));
+    } else {
+      arm();
+    }
+    return () => {
+      frames.forEach(cancelAnimationFrame);
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [stageGeneration, stageState]);
 
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
@@ -377,6 +433,7 @@ function LyricsPanelStage({
   const bindings: LyricsSceneBindings = {
     songId: currentTrackId,
     title: currentTitle,
+    provider: currentTrack?.provider,
     artistLabel: currentArtistLabel,
     albumTitle: currentAlbumTitle,
     artworkSrc: safeArtworkSource,
@@ -402,7 +459,7 @@ function LyricsPanelStage({
     romanization,
     wordEffect,
     fontWeight,
-    amll: compact ? { ...amll, enableBlur: false, enableScale: false } : amll,
+    amll: webCompactAmll,
   };
 
   return (
@@ -495,4 +552,16 @@ function LyricsPanelStage({
       </div>
     </section>
   );
+}
+
+function stageHiddenFraction(node: HTMLElement): number | null {
+  const height = node.offsetHeight;
+  if (height <= 0) return null;
+  const transform = getComputedStyle(node).transform;
+  if (!transform || transform === 'none') return 0;
+  try {
+    return Math.min(1, Math.max(0, new DOMMatrixReadOnly(transform).m42 / height));
+  } catch {
+    return null;
+  }
 }

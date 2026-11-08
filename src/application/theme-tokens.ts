@@ -99,41 +99,70 @@ export interface ThemeTokenInput {
   secondary: string;
   surfaceOpacity: number;
   material: 'opaque' | 'translucent';
+  /** True grayscale: accents and surfaces carry no hue (Android's default palette). */
+  neutral?: boolean;
+}
+
+/** Android's `default` palette: grayscale accents that keep >= 4.5:1 contrast in each mode. */
+export function neutralPalette(mode: ResolvedColorMode): { primary: string; secondary: string } {
+  return mode === 'dark'
+    ? { primary: '#EDEDED', secondary: '#9E9E9E' }
+    : { primary: '#1F1F1F', secondary: '#6B6B6B' };
 }
 
 export function generateThemeTokens(input: ThemeTokenInput): Record<string, string> {
   const dark = input.mode === 'dark';
-  const primary = normalizeHexColor(input.primary);
-  const secondary = normalizeHexColor(input.secondary, '#7FA3A0');
+  const neutral = input.neutral === true;
+  const palette = neutral ? neutralPalette(input.mode) : input;
+  const primary = normalizeHexColor(palette.primary);
+  const secondary = normalizeHexColor(palette.secondary, '#7FA3A0');
   const opacity = Math.max(0.85, Math.min(1, input.surfaceOpacity / 100));
   const materialAdjustment = input.material === 'translucent' ? 0.07 : 0;
   const alpha = Math.max(0.78, opacity - materialAdjustment);
-  const base = dark ? '#11120F' : '#F5F5F1';
-  const sidebar = dark ? '#0D0E0C' : '#EBEBE6';
-  const surface = dark ? '#181A16' : '#FFFFFF';
-  const raised = dark ? '#1D1F1A' : '#FAFAF7';
-  const player = dark ? '#141511' : '#F9F9F5';
+  const tone = (tinted: string, gray: string) => (neutral ? gray : tinted);
+  const base = dark ? tone('#11120F', '#0F0F0F') : tone('#F5F5F1', '#F5F5F5');
+  const sidebar = dark ? tone('#0D0E0C', '#0B0B0B') : tone('#EBEBE6', '#EBEBEB');
+  const surface = dark ? tone('#181A16', '#171717') : '#FFFFFF';
+  const raised = dark ? tone('#1D1F1A', '#1C1C1C') : tone('#FAFAF7', '#FAFAFA');
+  const player = dark ? tone('#141511', '#131313') : tone('#F9F9F5', '#F9F9F9');
   const hoverTarget = dark ? '#FFFFFF' : '#000000';
 
   return {
     '--bg-opaque': base,
     '--bg': rgba(base, alpha),
-    '--bg-subtle': rgba(dark ? '#141511' : '#F0F0EB', Math.min(1, alpha + 0.025)),
+    '--bg-subtle': rgba(
+      dark ? tone('#141511', '#131313') : tone('#F0F0EB', '#F0F0F0'),
+      Math.min(1, alpha + 0.025),
+    ),
     '--sidebar': rgba(sidebar, Math.min(1, alpha + 0.035)),
     '--surface': rgba(surface, alpha),
     '--surface-raised': rgba(raised, Math.min(1, alpha + 0.035)),
-    '--surface-hover': rgba(dark ? '#242620' : '#E8E9E2', Math.min(1, alpha + 0.06)),
-    '--surface-pressed': rgba(dark ? '#292C24' : '#DEDFD7', Math.min(1, alpha + 0.08)),
+    '--surface-hover': rgba(
+      dark ? tone('#242620', '#242424') : tone('#E8E9E2', '#E8E8E8'),
+      Math.min(1, alpha + 0.06),
+    ),
+    '--surface-pressed': rgba(
+      dark ? tone('#292C24', '#2A2A2A') : tone('#DEDFD7', '#DEDEDE'),
+      Math.min(1, alpha + 0.08),
+    ),
     '--player': rgba(player, Math.min(1, alpha + 0.045)),
     '--accent': primary,
     '--accent-primary': primary,
     '--accent-primary-hover': mixHex(primary, hoverTarget, dark ? 0.12 : 0.1),
     '--accent-primary-active': mixHex(primary, dark ? '#000000' : '#000000', dark ? 0.13 : 0.18),
     '--accent-hover': mixHex(primary, hoverTarget, dark ? 0.12 : 0.1),
-    '--accent-ink': readableForeground(primary),
+    '--accent-ink':
+      neutral && readableForeground(primary) === '#11130F'
+        ? '#111111'
+        : readableForeground(primary),
     '--accent-secondary': secondary,
     '--accent-secondary-muted': rgba(secondary, dark ? 0.2 : 0.16),
-    '--focus': contrastRatio(primary, base) >= 3 ? primary : dark ? '#D5EE8D' : '#526F24',
+    '--focus':
+      contrastRatio(primary, base) >= 3
+        ? primary
+        : dark
+          ? tone('#D5EE8D', '#FFFFFF')
+          : tone('#526F24', '#000000'),
     '--selection': rgba(primary, 0.24),
     '--surface-base-alpha': alpha.toFixed(3),
     '--surface-raised-alpha': Math.min(1, alpha + 0.035).toFixed(3),

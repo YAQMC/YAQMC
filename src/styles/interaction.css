@@ -1,0 +1,119 @@
+/* Shared interaction feedback. Loaded after component/page styles so it can extend them;
+ * press feedback uses the independent `scale` property so it composes with the existing
+ * hover/reveal `transform`s instead of replacing them. */
+
+:root {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Zero-specificity fallback ring: any component that styles its own focus state still wins. */
+:where(
+  a,
+  select,
+  textarea,
+  summary,
+  [role='button'],
+  [role='tab'],
+  [tabindex]:not([tabindex='-1'])
+):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+:is(
+  .sidebar__item,
+  .sidebar__profile,
+  .android-bottom-nav__item,
+  .search-trigger,
+  .search-tabs button,
+  .player-controls__play,
+  .player-bar__artwork-button,
+  .media-card__play,
+  .media-library-card,
+  .settings-icon-button,
+  .toggle-switch,
+  .ui-select__trigger,
+  .plugin-chip,
+  .song-comments__text-button
+) {
+  transition-duration: var(--motion-fast);
+  transition-property:
+    color, background-color, border-color, box-shadow, opacity, filter, transform, scale;
+  transition-timing-function: var(--ease-out);
+}
+
+:is(
+    .sidebar__item,
+    .sidebar__profile,
+    .android-bottom-nav__item,
+    .search-trigger,
+    .search-tabs button,
+    .media-library-card,
+    .ui-select__trigger,
+    .plugin-chip,
+    .song-comments__text-button
+  ):not(:disabled):active {
+  scale: 0.98;
+}
+
+:is(
+    .player-controls__play,
+    .player-bar__artwork-button,
+    .media-card__play,
+    .settings-icon-button,
+    .toggle-switch
+  ):not(:disabled):active {
+  scale: 0.92;
+}
+
+.media-card__open:active .artwork,
+.featured-release__art:active .artwork {
+  scale: 0.975;
+}
+
+/* Active navigation: the indicator grows in and the icon settles with a small spring. */
+.sidebar__item[data-active]::before {
+  animation: nav-indicator-in var(--motion-slow) var(--ease-emphasized);
+}
+
+.android-bottom-nav__item {
+  transition-duration: var(--motion-base);
+}
+
+.android-bottom-nav__item[data-active] svg {
+  animation: nav-icon-pop var(--motion-slow) var(--ease-spring);
+}
+
+@keyframes nav-indicator-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+}
+
+@keyframes nav-icon-pop {
+  from {
+    transform: translateY(2px) scale(0.86);
+  }
+}
+
+/* Touch screens: hover never ends after a tap, so hover-only affordances would either
+ * stay hidden (quick play) or stick in their lifted state. */
+@media (hover: none) {
+  .media-card__play {
+    opacity: 1;
+    transform: none;
+  }
+
+  .media-card__open:hover .artwork,
+  .featured-release__art:hover .artwork,
+  .player-controls__play:not(:disabled):hover {
+    filter: none;
+    transform: none;
+  }
+
+  .track-row:active,
+  .queue-row:active {
+    background: var(--surface-pressed);
+  }
+}

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const invokeMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: 'electron' }),
   getYaqmcClient: () => ({
     invoke: invokeMock,
     on: () => () => undefined,

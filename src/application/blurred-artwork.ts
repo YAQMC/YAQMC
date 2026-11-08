@@ -3,16 +3,47 @@ import { canvasRGB as stackBlurCanvasRGB } from 'stackblur-canvas';
 
 const blurredCache = new Map<string, string>();
 const pendingRender = new Map<string, Promise<string | null>>();
+// Native artwork sources can themselves be large data URIs.
+const MAX_ENTRIES = 8;
+const MAX_CHARS = 16 * 1024 * 1024;
+let cachedChars = 0;
+let cacheGeneration = 0;
+
+export function clearBlurredArtworkCache(): void {
+  cacheGeneration += 1;
+  blurredCache.clear();
+  pendingRender.clear();
+  cachedChars = 0;
+}
+
+function remember(source: string, value: string): void {
+  const previous = blurredCache.get(source);
+  if (previous !== undefined) cachedChars -= source.length + previous.length;
+  blurredCache.delete(source);
+  if (source.length + value.length > MAX_CHARS) return;
+  blurredCache.set(source, value);
+  cachedChars += source.length + value.length;
+  while (blurredCache.size > MAX_ENTRIES || cachedChars > MAX_CHARS) {
+    const [key, oldest] = blurredCache.entries().next().value!;
+    cachedChars -= key.length + oldest.length;
+    blurredCache.delete(key);
+  }
+}
 
 const BLUR_SIZE = 320;
 const BLUR_RADIUS = 24;
 
-function renderBlurredArtwork(source: string): Promise<string | null> {
+export function renderBlurredArtwork(source: string): Promise<string | null> {
   const cached = blurredCache.get(source);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    blurredCache.delete(source);
+    blurredCache.set(source, cached);
+    return Promise.resolve(cached);
+  }
   const inflight = pendingRender.get(source);
   if (inflight) return inflight;
 
+  const generation = cacheGeneration;
   const task = new Promise<string | null>((resolve) => {
     const image = new Image();
     image.onload = () => {
@@ -35,7 +66,7 @@ function renderBlurredArtwork(source: string): Promise<string | null> {
         context.drawImage(image, offsetX, offsetY, width, height);
         stackBlurCanvasRGB(canvas, 0, 0, BLUR_SIZE, BLUR_SIZE, BLUR_RADIUS);
         const dataUri = canvas.toDataURL('image/jpeg', 0.88);
-        blurredCache.set(source, dataUri);
+        if (generation === cacheGeneration) remember(source, dataUri);
         resolve(dataUri);
       } catch {
         resolve(null);
@@ -43,7 +74,9 @@ function renderBlurredArtwork(source: string): Promise<string | null> {
     };
     image.onerror = () => resolve(null);
     image.src = source;
-  }).finally(() => pendingRender.delete(source));
+  }).finally(() => {
+    if (pendingRender.get(source) === task) pendingRender.delete(source);
+  });
 
   pendingRender.set(source, task);
   return task;

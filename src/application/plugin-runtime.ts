@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import type { PluginUpdateOperation, PluginReleaseInfo } from '@yaqmc/client';
+import { clearPluginSongBadges, replacePluginSongBadges } from './plugin-song-badges';
+import { invalidatePluginAssets, syncPluginAssetAccess } from './plugin-asset';
+import type { ActiveSongBadge, PluginUpdateOperation, PluginReleaseInfo } from '@yaqmc/client';
 import {
   BUILTIN_CLASSIC_ID,
   factoryScene,
@@ -32,6 +34,7 @@ import {
   registerPluginSidebarAction,
   registerPluginTrackAction,
 } from './plugin-ui';
+import { applyPluginPageCall, isPluginPageMethod, validatePluginPagePayload } from './plugin-pages';
 
 const client = getYaqmcClient();
 
@@ -77,6 +80,9 @@ export interface PluginRecord {
   networkOrigins?: string[];
   unpackedPath?: string | null;
   lastError?: string | null;
+  /** Manifest `https://` repository URL, when declared. */
+  repository?: string | null;
+  license?: string | null;
 }
 
 export interface ActiveStyleSheet {
@@ -127,6 +133,7 @@ export interface ActivePluginResources {
   styles: ActiveStyleSheet[];
   scenes: ActiveSceneResource[];
   scripts: ActiveScriptResource[];
+  songBadges?: ActiveSongBadge[];
 }
 
 export interface PluginInspectResult {
@@ -527,6 +534,25 @@ var ctx = {
   network: {
     request: function (request) { return __yaqmcCall('network.request', request || {}); }
   },
+  pages: {
+    register: function (page) { return __yaqmcCall('ui.pages.register', page || {}); },
+    render: function (pageId, blocks) { return __yaqmcCall('ui.pages.render', { pageId: String(pageId || ''), blocks: blocks || [] }); },
+    unregister: function (pageId) { return __yaqmcCall('ui.pages.unregister', { pageId: String(pageId || '') }); },
+    onMount: function (pageId, handler) {
+      return ctx.events.on('page.mounted', function (payload) { if (payload && payload.pageId === pageId) handler(payload); });
+    },
+    onUnmount: function (pageId, handler) {
+      return ctx.events.on('page.unmounted', function (payload) { if (payload && payload.pageId === pageId) handler(payload); });
+    }
+  },
+  navigation: {
+    register: function (entry) { return __yaqmcCall('ui.navigation.register', entry || {}); },
+    unregister: function (id) { return __yaqmcCall('ui.navigation.unregister', { id: String(id || '') }); }
+  },
+  layout: {
+    set: function (layout) { return __yaqmcCall('ui.layout.set', layout || {}); },
+    clear: function (target) { return __yaqmcCall('ui.layout.clear', { target: String(target || '') }); }
+  },
   scenes: {
     onMount: function (sceneId, handler) {
       return ctx.events.on('scene.changed', function (payload) {
@@ -673,6 +699,7 @@ function toPluginPreset(scene: ActiveSceneResource): LyricsPresetDefinition | nu
 }
 
 function stopScripts(): void {
+  invalidatePluginAssets();
   runtimeGeneration += 1;
   for (const worker of workers.values()) {
     worker.terminate();
@@ -693,6 +720,8 @@ function stopScripts(): void {
 }
 
 async function retireOnePlugin(id: string): Promise<void> {
+  invalidatePluginAssets(id);
+  clearPluginSongBadges(id);
   pluginEpochs.set(id, (pluginEpochs.get(id) ?? 0) + 1);
   workers.get(id)?.terminate();
   workers.delete(id);
@@ -751,6 +780,10 @@ function applyBridgeSideEffect(
   if (method === 'ui.sidebar.register') {
     const action = asUiAction(script.pluginId, pluginName, payload);
     if (action) registerPluginSidebarAction(action);
+    return;
+  }
+  if (isPluginPageMethod(method)) {
+    applyPluginPageCall(script.pluginId, pluginName, method, payload);
     return;
   }
   if (method === 'ui.notify') {
@@ -912,6 +945,13 @@ async function startScripts(
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
         const boundToken = runtimeTokens.get(script.pluginId);
         if (!boundToken) return;
+        const invalid = isPluginPageMethod(data.method)
+          ? validatePluginPagePayload(data.method, data.payload ?? {})
+          : null;
+        if (invalid) {
+          worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: false, error: invalid });
+          return;
+        }
         void client
           .invoke('plugin_bridge', {
             request: {
@@ -1003,13 +1043,12 @@ function pluginEventPermission(event: string): string | null | undefined {
  * Event fan-out fails closed: if the host cannot report grants, plugins receive
  * no read-only events instead of receiving everything.
  */
-async function grantedPermissionsByPlugin(): Promise<Map<string, string[]>> {
+async function pluginRecordsForResources(): Promise<PluginRecord[]> {
   try {
-    const records = await client.invoke('plugin_list');
-    return new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
+    return await client.invoke('plugin_list');
   } catch (error) {
     logger.error('plugin.permissions.load_failed', error);
-    return new Map();
+    return [];
   }
 }
 
@@ -1050,6 +1089,20 @@ function emitToPlugin(pluginId: string, event: string, payload: unknown): void {
 
 export function dispatchPluginUiAction(pluginId: string, actionId: string, slot: string): void {
   emitToPlugin(pluginId, 'ui.action', { id: actionId, slot });
+}
+
+/** API v4: an action button or list item on a plugin page. Only the owning plugin is told. */
+export function dispatchPluginPageAction(pluginId: string, pageId: string, actionId: string): void {
+  emitToPlugin(pluginId, 'ui.action', { id: actionId, slot: 'page', pageId });
+}
+
+/** API v4 page lifecycle, addressed to the owning plugin only (never broadcast). */
+export function notifyPluginPageVisibility(
+  pluginId: string,
+  pageId: string,
+  visible: boolean,
+): void {
+  emitToPlugin(pluginId, visible ? 'page.mounted' : 'page.unmounted', { pageId });
 }
 
 function emitSceneLifecycle(selectedId: string): void {
@@ -1110,7 +1163,7 @@ export async function installUnpackedPlugin(
 }
 
 export async function reloadPlugin(id: string): Promise<PluginRecord> {
-  return client.invoke('plugin_reload', { id });
+  return withRetiredPluginCapabilities(() => client.invoke('plugin_reload', { id }), id);
 }
 
 export async function pluginSettingsGet(id: string): Promise<Record<string, unknown>> {
@@ -1191,10 +1244,22 @@ async function applyPluginResourcesSnapshot(
     .map(toPluginPreset)
     .filter((preset): preset is LyricsPresetDefinition => preset !== null);
   setPluginPresetCatalog(presets);
-  const grants = resources.safeMode
-    ? new Map<string, string[]>()
-    : await grantedPermissionsByPlugin();
+  const records = resources.safeMode ? [] : await pluginRecordsForResources();
   if (generation !== resourceGeneration) return null;
+  const grants = new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
+  syncPluginAssetAccess(
+    new Map(
+      records
+        .filter(
+          (record) =>
+            record.enabled && record.status === 'active' && !quiescingPlugins.has(record.id),
+        )
+        .map((record) => [
+          record.id,
+          `${record.packageSha256}:${record.version}:${record.grantedPermissions.join(',')}`,
+        ]),
+    ),
+  );
 
   const transports = collectPluginTransports(scenes, grants);
   setPluginTransportCatalog(transports);
@@ -1219,6 +1284,11 @@ async function applyPluginResourcesSnapshot(
   );
   if (generation !== resourceGeneration) return null;
   if (resources.safeMode) resetSceneBehavior();
+  replacePluginSongBadges(
+    resources.safeMode
+      ? []
+      : (resources.songBadges ?? []).filter((badge) => !quiescingPlugins.has(badge.pluginId)),
+  );
   const selected = usePreferencesStore.getState().lyricsPresets.selectedId;
   emitSceneLifecycle(selected);
   return resources;
@@ -1233,6 +1303,7 @@ async function applyPluginResourcesSnapshot(
  * event, even before the host has answered the mutation that revoked it.
  */
 function retirePluginCapabilities(): void {
+  clearPluginSongBadges();
   resourceGeneration += 1;
   // Retire renderer-side capabilities synchronously as well as workers.  A
   // revoked plugin must not keep styles, actions, or transport definitions
@@ -1574,6 +1645,7 @@ export function usePluginHost(): void {
     return () => {
       unlisten();
       unlistenUpdates();
+      clearPluginSongBadges();
       unsubscribePlayer();
       unsubscribeLyrics();
       unsubscribePrefs();

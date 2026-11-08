@@ -49,6 +49,7 @@ import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } fro
 import { EntityLink } from './EntityLink';
 import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
+import { PluginSongBadges } from './PluginSongBadges';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
@@ -358,6 +359,7 @@ export function PlayerBar({ onToggleQueue, inert }: PlayerBarProps) {
                 {current.title}
               </EntityLink>
               <span className="player-bar__artist-links">
+                <PluginSongBadges song={current} />
                 {current.artists.map((artist, artistIndex) => (
                   <span key={`${artist.id}-${artistIndex}`}>
                     {artistIndex > 0 && ', '}

@@ -100,7 +100,6 @@ import {
 } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
-import { PluginManager } from '../components/PluginManager';
 import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
 import {
   SurfaceCapabilityBanner,
@@ -420,8 +419,22 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
   const [interactionPending, setInteractionPending] = useState(false);
   const [interactionError, setInteractionError] = useState(false);
   const update = (patch: Partial<LyricSurfaceSettings>) => updateSurface(kind, patch);
-  const name = kind === 'desktop' ? t('desktop') : t('island');
-  const description = kind === 'desktop' ? t('desktopDescription') : t('islandDescription');
+  // Android floating lyrics and system Fluid Cloud are separate capabilities.
+  const android = isAndroidRuntime();
+  const name = android
+    ? kind === 'desktop'
+      ? t('androidFloating')
+      : t('androidIsland')
+    : kind === 'desktop'
+      ? t('desktop')
+      : t('island');
+  const description = android
+    ? kind === 'desktop'
+      ? t('androidFloatingDescription')
+      : t('androidIslandDescription')
+    : kind === 'desktop'
+      ? t('desktopDescription')
+      : t('islandDescription');
   const locked = settings.interaction === 'passive-locked';
   const changeInteraction = async (nextLocked: boolean) => {
     setInteractionPending(true);
@@ -434,6 +447,45 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
       setInteractionPending(false);
     }
   };
+  if (android && kind === 'island') {
+    const openLink = (link: ProductLink) => {
+      setInteractionError(false);
+      void openProductLink(link).catch(() => setInteractionError(true));
+    };
+    return (
+      <div className="settings-surface">
+        <div className="settings-surface__header">
+          <div>
+            <strong>{name}</strong>
+            <span>{supported ? t('androidIslandReadyDescription') : description}</span>
+          </div>
+          <Toggle
+            label={t('enable', { name })}
+            checked={supported && settings.enabled}
+            disabled={!supported}
+            onChange={(enabled) => update({ enabled })}
+          />
+        </div>
+        <div className="settings-about__links">
+          <button
+            type="button"
+            className="button button--quiet"
+            onClick={() => openLink('androidLyricsPlugins')}
+          >
+            {t('androidPluginGuide')} <ExternalLink size={13} />
+          </button>
+          <button
+            type="button"
+            className="button button--quiet"
+            onClick={() => openLink('androidLyricsContribution')}
+          >
+            {t('androidPluginContribute')} <ExternalLink size={13} />
+          </button>
+        </div>
+        {interactionError && <p role="alert">{t('androidLinkError')}</p>}
+      </div>
+    );
+  }
   const lineOptions: readonly SelectOption<LyricSurfaceSettings['lineMode']>[] = [
     { value: 'single', label: t('lineModeSingle') },
     { value: 'double', label: t('lineModeDouble') },
@@ -468,13 +520,13 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
           onChange={(enabled) => update({ enabled })}
         />
       </div>
-      <SurfacePreview kind={kind} />
+      {supported && <SurfacePreview kind={kind} />}
       {settings.enabled && supported && locked && (
         <div className="settings-surface__lock-recovery" role="status">
           <LockKeyhole size={18} />
           <span>
             <strong>{t('lockedState', { name })}</strong>
-            <small>{t('unlockHint')}</small>
+            <small>{t(android ? 'androidUnlockHint' : 'unlockHint')}</small>
           </span>
           <button
             type="button"
@@ -501,17 +553,19 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               />
             }
           />
-          <SettingRow
-            title={t('alwaysOnTop')}
-            description={t('alwaysOnTopDescription')}
-            control={
-              <Toggle
-                checked={settings.alwaysOnTop}
-                label={t('alwaysOnTop')}
-                onChange={(alwaysOnTop) => update({ alwaysOnTop })}
-              />
-            }
-          />
+          {!android && (
+            <SettingRow
+              title={t('alwaysOnTop')}
+              description={t('alwaysOnTopDescription')}
+              control={
+                <Toggle
+                  checked={settings.alwaysOnTop}
+                  label={t('alwaysOnTop')}
+                  onChange={(alwaysOnTop) => update({ alwaysOnTop })}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('locked')}
             description={t('lockedDescription')}
@@ -529,17 +583,19 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               {t('interactionError', { name })}
             </p>
           )}
-          <SettingRow
-            title={t('hideFullscreen')}
-            description={t('hideFullscreenDescription')}
-            control={
-              <Toggle
-                checked={settings.hideInFullscreen}
-                label={t('hideFullscreen')}
-                onChange={(hideInFullscreen) => update({ hideInFullscreen })}
-              />
-            }
-          />
+          {!android && (
+            <SettingRow
+              title={t('hideFullscreen')}
+              description={t('hideFullscreenDescription')}
+              control={
+                <Toggle
+                  checked={settings.hideInFullscreen}
+                  label={t('hideFullscreen')}
+                  onChange={(hideInFullscreen) => update({ hideInFullscreen })}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('fontSize')}
             description={t('fontFamily')}
@@ -568,30 +624,32 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               />
             }
           />
-          <SettingRow
-            title={t('fontFamily')}
-            description={t('systemFont')}
-            control={
-              <div className="settings-inline-control">
-                <Select
-                  value={settings.fontMode}
-                  options={fontOptions}
-                  onChange={(fontMode) => update({ fontMode })}
-                  ariaLabel={t('fontFamily')}
-                  icon={Type}
-                />
-                {settings.fontMode === 'custom' && (
-                  <input
-                    className="settings-text-input"
-                    value={settings.customFontFamily}
-                    placeholder={t('customFontPlaceholder')}
-                    aria-label={t('customFont')}
-                    onChange={(event) => update({ customFontFamily: event.target.value })}
+          {!android && (
+            <SettingRow
+              title={t('fontFamily')}
+              description={t('systemFont')}
+              control={
+                <div className="settings-inline-control">
+                  <Select
+                    value={settings.fontMode}
+                    options={fontOptions}
+                    onChange={(fontMode) => update({ fontMode })}
+                    ariaLabel={t('fontFamily')}
+                    icon={Type}
                   />
-                )}
-              </div>
-            }
-          />
+                  {settings.fontMode === 'custom' && (
+                    <input
+                      className="settings-text-input"
+                      value={settings.customFontFamily}
+                      placeholder={t('customFontPlaceholder')}
+                      aria-label={t('customFont')}
+                      onChange={(event) => update({ customFontFamily: event.target.value })}
+                    />
+                  )}
+                </div>
+              }
+            />
+          )}
           <SettingRow
             title={t('alignment')}
             description={t('alignment')}
@@ -1106,6 +1164,7 @@ export function SettingsPage() {
   };
   const lockedSurfaceKinds = (['desktop', 'island'] as const).filter(
     (kind) =>
+      (!isAndroidRuntime() || kind === 'desktop') &&
       preferences.surfaces[kind].enabled &&
       preferences.surfaces[kind].interaction === 'passive-locked',
   );
@@ -1805,9 +1864,24 @@ export function SettingsPage() {
             />
             <SurfaceSettingsPanel
               kind="island"
-              supported={host.lyricsSurfaces && (capabilities?.island ?? true)}
+              supported={host.lyricsSurfaces && (capabilities?.island ?? !android)}
             />
           </div>
+          {android && (
+            <SettingRow
+              title={t('surfaces.carBluetooth')}
+              description={t('surfaces.carBluetoothDescription')}
+              control={
+                <Toggle
+                  checked={preferences.lyrics.carBluetoothLyrics}
+                  label={t('surfaces.carBluetooth')}
+                  onChange={(carBluetoothLyrics) =>
+                    preferences.updateLyrics({ carBluetoothLyrics })
+                  }
+                />
+              }
+            />
+          )}
         </SettingsSection>
       )}
 
@@ -1966,14 +2040,6 @@ export function SettingsPage() {
                 </span>
               }
             />
-          </div>
-        </SettingsSection>
-      )}
-
-      {host.plugins && (
-        <SettingsSection title={t('plugins.title')} description={t('plugins.description')}>
-          <div className="settings-card">
-            <PluginManager />
           </div>
         </SettingsSection>
       )}

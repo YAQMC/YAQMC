@@ -183,7 +183,7 @@
     0 0 24px color-mix(in srgb, var(--lyrics-color) 34%, transparent);
 }
 
-.lyrics-scene__metadata span {
+.lyrics-scene__metadata > span:not(.plugin-song-badges) {
   color: color-mix(in srgb, var(--lyrics-foreground, var(--lyrics-ink)) 78%, transparent);
   font-size: clamp(1.05rem, 2.3cqw, 1.6rem);
   font-weight: 620;
@@ -357,13 +357,13 @@
 }
 
 .app-shell .lyrics-stage__topbar {
-  top: var(--android-safe-top);
-  right: var(--android-safe-right);
+  top: var(--safe-top);
+  right: var(--safe-right);
 }
 
 .app-shell .lyrics-stage__chrome {
-  bottom: calc(14px + var(--android-safe-bottom));
-  left: calc(14px + var(--android-safe-left));
+  bottom: calc(14px + var(--safe-bottom));
+  left: calc(14px + var(--safe-left));
   gap: 8px;
 }
 
@@ -405,7 +405,7 @@
 @media (orientation: portrait) and (max-width: 599px) {
   .app-shell .lyrics-scene[data-mode='runtime'] {
     --phone-cover-size: min(calc(100vw - 48px), 26dvh, 240px);
-    --phone-player-top: calc(var(--android-safe-top) + 54px);
+    --phone-player-top: calc(var(--safe-top) + 54px);
   }
 
   .app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget[data-widget='artwork'] {
@@ -429,8 +429,8 @@
     grid-template-areas: 'artwork' 'metadata' 'lyrics' 'transport';
     grid-template-rows: minmax(0, var(--phone-cover-size)) auto minmax(0, 1fr) max-content;
     gap: 8px;
-    padding: var(--phone-player-top) max(16px, var(--android-safe-right))
-      calc(var(--android-safe-bottom) + 10px) max(16px, var(--android-safe-left));
+    padding: var(--phone-player-top) max(16px, var(--safe-right)) calc(var(--safe-bottom) + 10px)
+      max(16px, var(--safe-left));
   }
 
   .app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget {
@@ -462,7 +462,7 @@
     overflow-wrap: anywhere;
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     font-size: clamp(0.8rem, 3.8vw, 1rem);
@@ -487,9 +487,9 @@
   }
 
   .app-shell .lyrics-stage__chrome {
-    top: calc(var(--android-safe-top) + 5px);
+    top: calc(var(--safe-top) + 5px);
     bottom: auto;
-    left: calc(var(--android-safe-left) + 5px);
+    left: calc(var(--safe-left) + 5px);
   }
 
   .app-shell .lyrics-stage__topbar {
@@ -528,8 +528,8 @@
       minmax(0, 1fr) clamp(260px, 40vw, 340px) auto max-content
       minmax(0, 1fr);
     gap: 10px 22px;
-    padding: calc(var(--android-safe-top) + 62px) max(18px, var(--android-safe-right))
-      calc(var(--android-safe-bottom) + 18px) max(18px, var(--android-safe-left));
+    padding: calc(var(--safe-top) + 62px) max(18px, var(--safe-right))
+      calc(var(--safe-bottom) + 18px) max(18px, var(--safe-left));
   }
 
   .app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget[data-widget='artwork'] {
@@ -578,7 +578,7 @@
     overflow-wrap: anywhere;
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     font-size: clamp(0.85rem, 2.3vw, 1.05rem);
@@ -622,7 +622,7 @@
 @media (orientation: landscape) and (max-height: 599px) {
   .app-shell .lyrics-scene[data-mode='runtime'] {
     --landscape-left-width: min(40vw, 390px);
-    --landscape-player-top: calc(var(--android-safe-top) + 46px);
+    --landscape-player-top: calc(var(--safe-top) + 46px);
   }
 
   .app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget[data-widget='artwork'] {
@@ -651,8 +651,8 @@
     grid-template-rows: minmax(0, 1fr) auto max-content;
     column-gap: 14px;
     row-gap: 4px;
-    padding: var(--landscape-player-top) calc(var(--android-safe-right) + 12px)
-      calc(var(--android-safe-bottom) + 7px) calc(var(--android-safe-left) + 10px);
+    padding: var(--landscape-player-top) calc(var(--safe-right) + 12px)
+      calc(var(--safe-bottom) + 7px) calc(var(--safe-left) + 10px);
   }
 
   .app-shell .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget {
@@ -675,7 +675,7 @@
   }
 
   .app-shell .lyrics-scene__metadata strong,
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     text-overflow: ellipsis;
@@ -686,7 +686,7 @@
     font-size: clamp(0.95rem, 2.8vw, 1.25rem);
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     font-size: clamp(0.75rem, 2vw, 0.9rem);
   }
 
@@ -711,9 +711,9 @@
   }
 
   .app-shell .lyrics-stage__chrome {
-    top: calc(var(--android-safe-top) + 2px);
+    top: calc(var(--safe-top) + 2px);
     bottom: auto;
-    left: calc(var(--android-safe-left) + 2px);
+    left: calc(var(--safe-left) + 2px);
   }
 
   .app-shell .lyrics-stage__topbar {

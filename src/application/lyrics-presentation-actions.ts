@@ -22,8 +22,8 @@ async function closeLyricsPresentationOnce(): Promise<boolean> {
     presentation.clearError();
     usePlayerStore.getState().closePanels();
     useLyricsStageStore.getState().requestClose();
-    await waitForLyricsStageClosed();
-    return true;
+    // false: the user reopened lyrics before the exit finished, so the close did not happen.
+    return waitForLyricsStageClosed();
   }
 
   await useLyricsPresentationStore.getState().request(false);
@@ -32,8 +32,7 @@ async function closeLyricsPresentationOnce(): Promise<boolean> {
 
   usePlayerStore.getState().closePanels();
   useLyricsStageStore.getState().requestClose();
-  await waitForLyricsStageClosed();
-  return true;
+  return waitForLyricsStageClosed();
 }
 
 export function closeLyricsPresentation(): Promise<boolean> {

@@ -1,3 +1,4 @@
+import { PluginSongBadges } from '../PluginSongBadges';
 import {
   useEffect,
   useLayoutEffect,
@@ -22,7 +23,7 @@ import {
   type ExtraSceneWidget,
   type SceneWidgetId,
 } from '../../application/lyrics-preset';
-import { resolveSceneAssetUrl } from '../../application/plugin-asset';
+import { resolveSceneAssetUrl, usePluginAssetRevision } from '../../application/plugin-asset';
 import { linuxSkipsLiveVideo, skipsLiveCssBlur } from '../../application/platform-integration';
 import {
   currentPluginSceneInstance,
@@ -222,6 +223,7 @@ export function LyricsScene({
     state.isPlaying ? null : state.positionMs,
   );
   const portrait = sceneSize.width > 0 && sceneSize.height > sceneSize.width;
+  const assetRevision = usePluginAssetRevision();
   const scene = useMemo(
     () => (editor ? preset.scene : sceneForOrientation(preset, portrait)),
     [editor, preset, portrait],
@@ -346,18 +348,23 @@ export function LyricsScene({
     return () => {
       cancelled = true;
     };
-  }, [preset.pluginId, scene]);
+  }, [preset.pluginId, scene, assetRevision]);
 
   useEffect(() => {
     if (editor || !runtimePlaying || runtimeScrubbing) return;
     let frame = 0;
+    let written = '';
     const maxDurationMs = Math.max(durationMs, 1);
     const tick = () => {
       // The shared transport controls own the seek slider; the scene keeps this
-      // loop for its own progress CSS variables only.
+      // loop for its own progress CSS variables only. --scene-progress is inherited by the whole
+      // scene, so only write it when its 0.1% step changes rather than restyling every frame.
       const positionMs = Math.max(0, Math.min(getPositionMs(), maxDurationMs));
-      const progress = (positionMs / maxDurationMs) * 100;
-      root.current?.style.setProperty('--scene-progress', String(progress / 100));
+      const progress = (positionMs / maxDurationMs).toFixed(3);
+      if (progress !== written) {
+        written = progress;
+        root.current?.style.setProperty('--scene-progress', progress);
+      }
       frame = window.requestAnimationFrame(tick);
     };
     tick();
@@ -753,6 +760,7 @@ export function LyricsScene({
             >
               {bindings.title}
             </strong>
+            <PluginSongBadges song={{ provider: bindings.provider }} />
             <span
               style={compactLayout ? undefined : { fontSize: `${scene.metadata.artistScale}em` }}
             >
@@ -794,6 +802,13 @@ export function LyricsScene({
             allowSeek={!editor}
             onFollowStateChange={onFollowStateChange}
             layoutKey={layoutKey}
+            styleKey={[
+              style['--lyrics-foreground'],
+              style['--lyrics-font-scale'],
+              style['--lyrics-font-size'],
+              style['--lyrics-line-height'],
+              style['--lyrics-font-weight'],
+            ].join('|')}
           />
         </SceneWidget>
       )}

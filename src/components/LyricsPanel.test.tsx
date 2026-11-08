@@ -221,6 +221,38 @@ describe('LyricsPanel', () => {
     expect(container.querySelectorAll('.lyrics-stage')).toHaveLength(1);
   });
 
+  it('holds a fresh entrance offscreen until two frames have painted, then arms it', () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { container } = render(<LyricsPanel {...props()} />);
+    const stage = container.querySelector<HTMLElement>('.lyrics-stage')!;
+
+    expect(stage).toHaveAttribute('data-stage', 'entering');
+    expect(stage).not.toHaveAttribute('data-stage-armed');
+    act(() => frames.splice(0).forEach((callback) => callback(16)));
+    expect(stage).not.toHaveAttribute('data-stage-armed');
+    act(() => frames.splice(0).forEach((callback) => callback(32)));
+    expect(stage).toHaveAttribute('data-stage-armed');
+    expect(stage.style.animationDelay).toBe('');
+  });
+
+  it('opens without a transition when reduced motion is requested', () => {
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...matchMedia(query),
+      matches: query === '(prefers-reduced-motion: reduce)',
+    })) as typeof window.matchMedia;
+    try {
+      const { container } = render(<LyricsPanel {...props()} />);
+      expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'open');
+    } finally {
+      window.matchMedia = matchMedia;
+    }
+  });
+
   it('runs the entrance transition once without touching playback or refetching lyrics', () => {
     const lyricsBefore = useLyricsStore.getState().document;
     const playerBefore = usePlayerStore.getState();

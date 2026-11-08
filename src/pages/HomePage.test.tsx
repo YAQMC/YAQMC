@@ -2,10 +2,35 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { homeFeed } from '../providers/fake/fixtures';
+import { applyPluginPageCall, clearPluginPageContributions } from '../application/plugin-pages';
 import { HomePage } from './HomePage';
 
 describe('HomePage', () => {
-  beforeEach(() => usePlayerStore.setState(initialPlayerState));
+  beforeEach(() => {
+    usePlayerStore.setState(initialPlayerState);
+    clearPluginPageContributions();
+  });
+
+  it('applies a plugin Home layout and attributes it', () => {
+    applyPluginPageCall('dev.example.layout', 'Layout plugin', 'ui.layout.set', {
+      target: 'home',
+      order: ['recommended-playlists'],
+      hidden: ['radar'],
+    });
+    const { container } = render(
+      <HomePage feed={structuredClone(homeFeed)} onNavigate={vi.fn()} />,
+    );
+
+    const headings = [...container.querySelectorAll('.content-section h2')].map(
+      (heading) => heading.textContent,
+    );
+    expect(headings[0]).toBe('Recommended playlists');
+    expect(headings).toHaveLength(2);
+    expect(container.querySelector('.track-list')).toBeNull();
+    expect(screen.getByText('Layout customized by Layout plugin')).toBeVisible();
+
+    clearPluginPageContributions('dev.example.layout');
+  });
 
   it('renders the provider daily title and the actual returned track count', () => {
     const onNavigate = vi.fn();

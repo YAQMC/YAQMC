@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CacheStats } from '@yaqmc/client';
 import { clearArtworkMemoryCache } from './artwork-cache';
+import { clearBlurredArtworkCache } from './blurred-artwork';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
 
@@ -39,6 +40,7 @@ export function useStorageSettings() {
       const value = await getYaqmcClient().invoke('app_clear_cache');
       if (mounted.current && request === generation.current) {
         clearArtworkMemoryCache();
+        clearBlurredArtworkCache();
         setCache(value);
       }
     } catch {
@@ -46,6 +48,7 @@ export function useStorageSettings() {
         // The disk operation may have partially completed. Drop stale memory
         // images and require a fresh measurement rather than displaying old usage.
         clearArtworkMemoryCache();
+        clearBlurredArtworkCache();
         setCache(null);
         setError('clear');
       }

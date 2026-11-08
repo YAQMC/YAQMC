@@ -265,10 +265,19 @@ function fallbackOrderState(
   };
 }
 
+// Provider origin metadata may change for the same id; reuse only identical rows.
+function sameTrack(previous: Song, incoming: Song | undefined): boolean {
+  return (
+    previous.id === incoming?.id &&
+    previous.provider?.providerId === incoming?.provider?.providerId &&
+    previous.provider?.originProviderId === incoming?.provider?.originProviderId
+  );
+}
+
 function reuseQueueIfSameTracks(previous: Song[], incoming: Song[]): Song[] {
   if (
     previous.length === incoming.length &&
-    previous.every((song, index) => song.id === incoming[index]?.id)
+    previous.every((song, index) => sameTrack(song, incoming[index]))
   ) {
     return previous;
   }
@@ -278,7 +287,10 @@ function reuseQueueIfSameTracks(previous: Song[], incoming: Song[]): Song[] {
 function reuseQueueEntriesIfSameIds(previous: QueueEntry[], incoming: QueueEntry[]): QueueEntry[] {
   if (
     previous.length === incoming.length &&
-    previous.every((entry, index) => entry.id === incoming[index]?.id)
+    previous.every(
+      (entry, index) =>
+        entry.id === incoming[index]?.id && sameTrack(entry.track, incoming[index]?.track),
+    )
   ) {
     return previous;
   }

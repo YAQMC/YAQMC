@@ -99,6 +99,36 @@ describe('player store', () => {
     expect(useAccountStore.getState().favoriteByTrackId[song.id]).toBe(true);
   });
 
+  it('updates provider origin when queue and entry identities stay the same', () => {
+    const original = {
+      ...track('one'),
+      provider: { providerId: 'federated', profileId: 'default', trackId: 'opaque' },
+    };
+    const updated = {
+      ...original,
+      provider: { ...original.provider, originProviderId: 'example.catalog' },
+    };
+    const apply = (song: Song) =>
+      usePlayerStore.getState().applyExternalSnapshot(
+        snapshot({
+          queue: [song],
+          queueEntries: [{ id: 'entry-one', track: song }],
+          currentQueueEntryId: 'entry-one',
+        }),
+      );
+    apply(original);
+    apply(updated);
+    expect(usePlayerStore.getState().queue[0]?.provider?.originProviderId).toBe('example.catalog');
+    expect(usePlayerStore.getState().queueEntries[0]?.track.provider?.originProviderId).toBe(
+      'example.catalog',
+    );
+    apply(original);
+    expect(usePlayerStore.getState().queue[0]?.provider?.originProviderId).toBeUndefined();
+    expect(
+      usePlayerStore.getState().queueEntries[0]?.track.provider?.originProviderId,
+    ).toBeUndefined();
+  });
+
   it('starts a requested track in a new queue', () => {
     usePlayerStore.getState().playTracks([track('one'), track('two')], 'two');
 
@@ -510,6 +540,41 @@ describe('player store', () => {
     const after = usePlayerStore.getState();
     expect(after.queue).toBe(before);
     expect(after.positionMs).toBe(1_250);
+  });
+
+  it('refreshes queue rows when only the song source changes for the same ids', () => {
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('same'), track('two')],
+      currentIndex: 0,
+      sessionId: 3,
+      snapshotRevision: 1,
+    });
+    const before = usePlayerStore.getState();
+    const labelled = {
+      ...track('same'),
+      provider: {
+        providerId: 'aggregate',
+        profileId: 'default',
+        trackId: 'same',
+        originProviderId: 'example.catalog',
+      },
+    };
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        queue: [labelled, track('two')],
+        queueEntries: before.queueEntries.map((entry, index) => ({
+          ...entry,
+          track: index === 0 ? labelled : entry.track,
+        })),
+        sessionId: 3,
+        snapshotRevision: 2,
+      }),
+    );
+    const after = usePlayerStore.getState();
+    expect(after.queue).not.toBe(before.queue);
+    expect(after.queue[0]?.provider?.originProviderId).toBe('example.catalog');
+    expect(after.queueEntries[0]?.track.provider?.originProviderId).toBe('example.catalog');
   });
 
   it.each([

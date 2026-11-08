@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as HostCapabilities from '../application/host-capabilities';
-import { AndroidBottomNav, Sidebar } from './Sidebar';
+import { BottomNav, Sidebar } from './Sidebar';
 
 const androidRuntime = vi.hoisted(() => ({ value: true }));
 
@@ -18,8 +18,8 @@ describe('Android Sidebar', () => {
   it('keeps icon-only rail destinations named when their visible text is compacted', () => {
     render(<Sidebar route={{ page: 'search' }} onNavigate={vi.fn()} />);
     const navigation = screen.getByRole('navigation');
-    expect(navigation.querySelectorAll('button')).toHaveLength(4);
-    for (const label of ['Home', 'Explore', 'Library', 'Search']) {
+    expect(navigation.querySelectorAll('button')).toHaveLength(5);
+    for (const label of ['Home', 'Explore', 'Library', 'Search', 'Plugins']) {
       expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-label', label);
     }
   });
@@ -45,12 +45,14 @@ describe('Android Sidebar', () => {
   });
 });
 
-describe('AndroidBottomNav', () => {
-  it('renders the four Android destinations and navigates by route', () => {
+describe('BottomNav', () => {
+  it('renders the five Android destinations, including Plugins, and navigates by route', () => {
     const onNavigate = vi.fn();
-    render(<AndroidBottomNav route={{ page: 'home' }} onNavigate={onNavigate} />);
+    render(<BottomNav route={{ page: 'home' }} onNavigate={onNavigate} />);
     expect(screen.getByRole('navigation')).toBeInTheDocument();
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getAllByRole('button')).toHaveLength(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Plugins' }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'plugins' });
     expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Playlists' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
@@ -58,7 +60,7 @@ describe('AndroidBottomNav', () => {
   });
 
   it('keeps Library selected on every nested library destination', () => {
-    render(<AndroidBottomNav route={{ page: 'statistics' }} onNavigate={vi.fn()} />);
+    render(<BottomNav route={{ page: 'statistics' }} onNavigate={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Library' })).toHaveAttribute('data-active', 'true');
   });
 });

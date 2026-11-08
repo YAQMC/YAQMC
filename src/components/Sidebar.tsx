@@ -4,16 +4,19 @@ import {
   Compass,
   Heart,
   Home,
+  LayoutGrid,
   Library,
   ListMusic,
   Puzzle,
   Search,
   Settings,
+  type LucideIcon,
 } from 'lucide-react';
 import { isLibraryRoute, isPrimaryRoute, type AppRoute } from '../application/navigation';
 import { isAndroidRuntime } from '../application/host-capabilities';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
+import { usePluginNavigation } from '../application/plugin-pages';
 import { useAccountIdentity } from '../application/account-identity';
 import { useTranslation } from 'react-i18next';
 import { AccountAvatar } from './AccountAvatar';
@@ -24,23 +27,91 @@ interface SidebarProps {
   onNavigate: (route: AppRoute) => void;
 }
 
+type NavPage = Extract<
+  AppRoute['page'],
+  | 'home'
+  | 'search'
+  | 'explore'
+  | 'library'
+  | 'favorites'
+  | 'account-playlists'
+  | 'account-recent'
+  | 'statistics'
+  | 'plugins'
+  | 'settings'
+>;
+
+type NavLabelKey =
+  | 'home'
+  | 'search'
+  | 'explore'
+  | 'library'
+  | 'favorites'
+  | 'playlists'
+  | 'recentlyPlayed'
+  | 'statistics'
+  | 'plugins'
+  | 'settings'
+  | 'yourMusic'
+  | 'application';
+
+interface NavItem {
+  page: NavPage;
+  labelKey: NavLabelKey;
+  icon: LucideIcon;
+}
+
+// Phones and Android collapse the account sections into Library (MediaLibraryPage links them).
+const compactItems: NavItem[] = [
+  { page: 'home', labelKey: 'home', icon: Home },
+  { page: 'explore', labelKey: 'explore', icon: Compass },
+  { page: 'library', labelKey: 'library', icon: Library },
+  { page: 'search', labelKey: 'search', icon: Search },
+  { page: 'plugins', labelKey: 'plugins', icon: Puzzle },
+];
+
+const desktopSections: { labelKey?: NavLabelKey; items: NavItem[] }[] = [
+  {
+    items: [
+      { page: 'home', labelKey: 'home', icon: Home },
+      { page: 'search', labelKey: 'search', icon: Search },
+      { page: 'explore', labelKey: 'explore', icon: Compass },
+    ],
+  },
+  {
+    labelKey: 'yourMusic',
+    items: [
+      { page: 'favorites', labelKey: 'favorites', icon: Heart },
+      { page: 'account-playlists', labelKey: 'playlists', icon: ListMusic },
+      { page: 'account-recent', labelKey: 'recentlyPlayed', icon: Clock3 },
+    ],
+  },
+  {
+    labelKey: 'application',
+    items: [
+      { page: 'statistics', labelKey: 'statistics', icon: BarChart3 },
+      { page: 'plugins', labelKey: 'plugins', icon: Puzzle },
+      { page: 'settings', labelKey: 'settings', icon: Settings },
+    ],
+  },
+];
+
+function isItemActive(route: AppRoute, page: NavPage): boolean {
+  if (page === 'library') return isLibraryRoute(route);
+  if (page === 'account-playlists') {
+    return isPrimaryRoute(route, page) || isPrimaryRoute(route, 'account-playlist');
+  }
+  return isPrimaryRoute(route, page);
+}
+
 export function Sidebar({ route, onNavigate, inert }: SidebarProps) {
   const { t } = useTranslation('navigation');
-  const android = isAndroidRuntime();
   const pluginSidebar = usePluginUiSnapshot().sidebar;
+  const pluginNavigation = usePluginNavigation();
   const identity = useAccountIdentity();
-  const primaryItems = android
-    ? [
-        { label: t('home'), page: 'home' as const, icon: Home },
-        { label: t('explore'), page: 'explore' as const, icon: Compass },
-        { label: t('library'), page: 'library' as const, icon: Library },
-        { label: t('search'), page: 'search' as const, icon: Search },
-      ]
-    : [
-        { label: t('home'), page: 'home' as const, icon: Home },
-        { label: t('search'), page: 'search' as const, icon: Search },
-        { label: t('explore'), page: 'explore' as const, icon: Compass },
-      ];
+  const sections: typeof desktopSections = isAndroidRuntime()
+    ? [{ items: compactItems }]
+    : desktopSections;
   return (
     <aside className="sidebar" data-yaqmc="sidebar" inert={inert}>
       <div className="sidebar__brand" aria-label="YAQMC">
@@ -49,92 +120,66 @@ export function Sidebar({ route, onNavigate, inert }: SidebarProps) {
       </div>
 
       <nav className="sidebar__nav" aria-label={t('primary')}>
-        {primaryItems.map(({ label, page, icon: Icon }) => (
+        {sections.flatMap(({ labelKey, items }) => [
+          ...(labelKey
+            ? [
+                <p key={labelKey} className="sidebar__section-label">
+                  {t(labelKey)}
+                </p>,
+              ]
+            : []),
+          ...items.map(({ page, labelKey: itemKey, icon: Icon }) => (
+            <button
+              type="button"
+              key={page}
+              className="sidebar__item"
+              aria-label={t(itemKey)}
+              title={t(itemKey)}
+              data-active={isItemActive(route, page) || undefined}
+              onClick={() => onNavigate({ page })}
+            >
+              <Icon size={18} />
+              <span>{t(itemKey)}</span>
+            </button>
+          )),
+        ])}
+        {(pluginSidebar.length > 0 || pluginNavigation.length > 0) && (
+          <p className="sidebar__section-label">{t('pluginPages')}</p>
+        )}
+        {pluginNavigation.map((entry) => (
           <button
             type="button"
-            key={page}
+            key={`page:${entry.pluginId}:${entry.id}`}
             className="sidebar__item"
-            aria-label={label}
-            title={label}
+            aria-label={`${entry.label} · ${entry.pluginName}`}
+            title={`${entry.label} · ${entry.pluginName}`}
             data-active={
-              (page === 'library' ? isLibraryRoute(route) : isPrimaryRoute(route, page)) ||
+              (route.page === 'plugin-page' &&
+                route.pluginId === entry.pluginId &&
+                route.pageId === entry.pageId) ||
               undefined
             }
-            onClick={() => onNavigate({ page })}
+            onClick={() =>
+              onNavigate({ page: 'plugin-page', pluginId: entry.pluginId, pageId: entry.pageId })
+            }
           >
-            <Icon size={18} />
-            <span>{label}</span>
+            <LayoutGrid size={18} />
+            <span>{entry.label}</span>
           </button>
         ))}
-
-        {!android && (
-          <>
-            <p className="sidebar__section-label">{t('yourMusic')}</p>
-            <button
-              type="button"
-              className="sidebar__item"
-              data-active={isPrimaryRoute(route, 'favorites') || undefined}
-              onClick={() => onNavigate({ page: 'favorites' })}
-            >
-              <Heart size={18} />
-              <span>{t('favorites')}</span>
-            </button>
-            <button
-              type="button"
-              className="sidebar__item"
-              data-active={
-                isPrimaryRoute(route, 'account-playlists') ||
-                isPrimaryRoute(route, 'account-playlist') ||
-                undefined
-              }
-              onClick={() => onNavigate({ page: 'account-playlists' })}
-            >
-              <ListMusic size={18} />
-              <span>{t('playlists')}</span>
-            </button>
-            <button
-              type="button"
-              className="sidebar__item"
-              data-active={isPrimaryRoute(route, 'account-recent') || undefined}
-              onClick={() => onNavigate({ page: 'account-recent' })}
-            >
-              <Clock3 size={18} />
-              <span>{t('recentlyPlayed')}</span>
-            </button>
-
-            <p className="sidebar__section-label">{t('application')}</p>
-            <button
-              type="button"
-              className="sidebar__item"
-              data-active={isPrimaryRoute(route, 'statistics') || undefined}
-              onClick={() => onNavigate({ page: 'statistics' })}
-            >
-              <BarChart3 size={18} />
-              <span>{t('statistics')}</span>
-            </button>
-            <button
-              type="button"
-              className="sidebar__item"
-              data-active={isPrimaryRoute(route, 'settings') || undefined}
-              onClick={() => onNavigate({ page: 'settings' })}
-            >
-              <Settings size={18} />
-              <span>{t('settings')}</span>
-            </button>
-            {pluginSidebar.length > 0 && <p className="sidebar__section-label">Plugins</p>}
-            {pluginSidebar.map((action) => (
-              <button
-                type="button"
-                key={`${action.pluginId}:${action.id}`}
-                className="sidebar__item"
-                onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
-              >
-                <Puzzle size={18} />
-                <span>{action.label}</span>
-              </button>
-            ))}
-          </>
-        )}
+        {pluginSidebar.map((action) => (
+          <button
+            type="button"
+            key={`${action.pluginId}:${action.id}`}
+            className="sidebar__item"
+            aria-label={action.label}
+            title={action.label}
+            onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
+          >
+            <LayoutGrid size={18} />
+            <span>{action.label}</span>
+          </button>
+        ))}
       </nav>
 
       <button
@@ -159,29 +204,22 @@ export function Sidebar({ route, onNavigate, inert }: SidebarProps) {
   );
 }
 
-/** Compact navigation used by Android phones; the desktop rail remains intact. */
-export function AndroidBottomNav({ route, onNavigate, inert }: SidebarProps) {
+/** Bottom navigation for phone-sized viewports on any host; hidden by CSS elsewhere. */
+export function BottomNav({ route, onNavigate, inert }: SidebarProps) {
   const { t } = useTranslation('navigation');
-  const items = [
-    { label: t('home'), page: 'home' as const, icon: Home },
-    { label: t('explore'), page: 'explore' as const, icon: Compass },
-    { label: t('library'), page: 'library' as const, icon: Library },
-    { label: t('search'), page: 'search' as const, icon: Search },
-  ];
   return (
     <nav className="android-bottom-nav" aria-label={t('primary')} inert={inert}>
-      {items.map(({ label, page, icon: Icon }) => (
+      {compactItems.map(({ page, labelKey, icon: Icon }) => (
         <button
           key={page}
           type="button"
           className="android-bottom-nav__item"
-          data-active={
-            (page === 'library' ? isLibraryRoute(route) : isPrimaryRoute(route, page)) || undefined
-          }
+          aria-current={isItemActive(route, page) ? 'page' : undefined}
+          data-active={isItemActive(route, page) || undefined}
           onClick={() => onNavigate({ page })}
         >
           <Icon size={20} />
-          <span>{label}</span>
+          <span>{t(labelKey)}</span>
         </button>
       ))}
     </nav>

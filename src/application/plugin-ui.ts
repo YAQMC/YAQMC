@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { clearPluginPageContributions } from './plugin-pages';
 
 export interface PluginUiContribution {
   pluginId: string;
@@ -38,6 +39,7 @@ export function pluginSidebarActions(): readonly PluginUiContribution[] {
 }
 
 export function clearPluginUi(pluginId?: string): void {
+  clearPluginPageContributions(pluginId);
   if (!pluginId) {
     trackActions = [];
     playerBarActions = [];

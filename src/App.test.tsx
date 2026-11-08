@@ -78,7 +78,7 @@ vi.mock('./components/LyricsPanel', () => ({
   ),
 }));
 vi.mock('./components/Sidebar', () => ({
-  AndroidBottomNav: () => null,
+  BottomNav: () => null,
   Sidebar: ({ route, onNavigate }: { route: AppRoute; onNavigate: (route: AppRoute) => void }) => (
     <aside>
       <output data-testid="active-route">{route.page}</output>

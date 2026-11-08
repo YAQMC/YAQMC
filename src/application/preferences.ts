@@ -28,7 +28,8 @@ import { logger } from './logger';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { supportsLyricsSurfaces } from './host-capabilities';
-import { hasHostCapability } from './host-capabilities';
+import { hasHostCapability, isAndroidRuntime } from './host-capabilities';
+import { setNativeCarBluetoothLyrics } from './native-lyrics-bridge';
 
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
@@ -91,6 +92,8 @@ export interface LyricDisplaySettings {
   focusSidebarCollapsed: boolean;
   wordEffect: LyricWordEffect;
   fontWeight: LyricFontWeight;
+  /** Android opt-in: lyric line as the media title while a Bluetooth audio output is active. */
+  carBluetoothLyrics: boolean;
 }
 
 /** Settings forwarded to the official Apple Music-like Lyrics renderer. */
@@ -183,6 +186,7 @@ export const defaultPreferences: AppPreferences = {
     focusSidebarCollapsed: false,
     wordEffect: 'jump',
     fontWeight: '700',
+    carBluetoothLyrics: false,
   },
   amll: {
     enableSpring: true,
@@ -370,6 +374,7 @@ export function normalizePreferences(value: unknown): AppPreferences {
         LYRIC_FONT_WEIGHTS.includes(lyrics.fontWeight as LyricFontWeight)
           ? (lyrics.fontWeight as LyricFontWeight)
           : '700',
+      carBluetoothLyrics: lyrics.carBluetoothLyrics === true,
     },
     amll: {
       enableSpring: typeof amll.enableSpring === 'boolean' ? amll.enableSpring : true,
@@ -854,7 +859,10 @@ export function applyAppearance(
 ): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
+  // Android starts in true grayscale; desktop keeps its tinted default. Chosen palettes win.
+  const neutral = appearance.palette === 'default' && isAndroidRuntime();
   root.dataset.theme = resolvedMode;
+  root.dataset.palette = neutral ? 'neutral' : appearance.palette;
   root.dataset.material = appearance.material;
   root.dataset.background = appearance.backgroundMode;
   for (const [name, value] of Object.entries(
@@ -864,6 +872,7 @@ export function applyAppearance(
       secondary: appearance.secondaryColor,
       surfaceOpacity: appearance.surfaceOpacity,
       material: appearance.material,
+      neutral,
     }),
   )) {
     root.style.setProperty(name, value);
@@ -1044,6 +1053,14 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
       active = false;
     };
   }, [appearance.backgroundImageReference, appearance.backgroundMode, setBackgroundImageState]);
+
+  const carBluetoothLyrics = usePreferencesStore((state) => state.lyrics.carBluetoothLyrics);
+  useEffect(() => {
+    if (!hydrated || !isAndroidRuntime()) return;
+    void setNativeCarBluetoothLyrics(carBluetoothLyrics).catch((error: unknown) => {
+      console.warn('Car Bluetooth lyric mode could not be applied', error);
+    });
+  }, [carBluetoothLyrics, hydrated]);
 
   useEffect(() => {
     if (!isNativeRuntime || !supportsLyricsSurfaces() || !reconcileSurfaces || !hydrated) return;

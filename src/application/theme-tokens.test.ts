@@ -36,4 +36,43 @@ describe('theme token generation', () => {
       expect(contrastRatio(color, readableForeground(color))).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it('produces genuinely hue-free, readable tokens for the neutral palette', () => {
+    for (const mode of ['dark', 'light'] as const) {
+      const tokens = generateThemeTokens({
+        mode,
+        primary: '#A8C95E',
+        secondary: '#7FA3A0',
+        surfaceOpacity: 96,
+        material: 'opaque',
+        neutral: true,
+      });
+      for (const [name, value] of Object.entries(tokens)) {
+        const hex = /#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})/i.exec(value);
+        const rgb = /rgba\((\d+), (\d+), (\d+)/.exec(value);
+        const [r, g, b] =
+          (hex
+            ? hex.slice(1).map((part) => Number.parseInt(part, 16))
+            : rgb?.slice(1).map(Number)) ?? [];
+        if (r !== undefined) expect([name, r, g], `${name}=${value}`).toEqual([name, g, b]);
+      }
+      const base = mode === 'dark' ? '#0F0F0F' : '#F5F5F5';
+      expect(contrastRatio(tokens['--accent-primary']!, base)).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrastRatio(tokens['--accent-primary']!, tokens['--accent-ink']!),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps the tinted default when the neutral flag is absent', () => {
+    const tokens = generateThemeTokens({
+      mode: 'dark',
+      primary: '#A8C95E',
+      secondary: '#7FA3A0',
+      surfaceOpacity: 96,
+      material: 'opaque',
+    });
+    expect(tokens['--accent-primary']).toBe('#A8C95E');
+    expect(tokens['--bg-opaque']).toBe('#11120F');
+  });
 });
