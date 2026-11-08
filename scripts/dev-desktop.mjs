@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import console from 'node:console';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import net from 'node:net';
@@ -32,34 +33,94 @@ export function coreBuildEnv(env = process.env) {
   };
 }
 
-export function waitForTcp(host, port, timeoutMs = 30_000) {
+export function checkDesktopDevDependencies(repositoryRoot) {
+  const rootRequire = createRequire(path.join(repositoryRoot, 'package.json'));
+  const desktopRequire = createRequire(
+    path.join(repositoryRoot, 'apps', 'desktop', 'package.json'),
+  );
+  const missing = [];
+  let viteCli;
+  try {
+    viteCli = path.join(path.dirname(rootRequire.resolve('vite/package.json')), 'bin', 'vite.js');
+    if (!existsSync(viteCli)) missing.push('vite');
+  } catch {
+    missing.push('vite');
+  }
+  for (const name of ['esbuild', 'electron']) {
+    try {
+      desktopRequire.resolve(name);
+    } catch {
+      missing.push(name);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing desktop development dependencies: ${missing.join(', ')}. ` +
+        'From the repository root, run: npm ci --include=dev --workspaces --include-workspace-root',
+    );
+  }
+  return { viteCli };
+}
+
+export function watchDevProcess(child, name, controller) {
+  child.once('error', (error) =>
+    controller.abort(new Error(`${name} failed to start: ${error.message}`)),
+  );
+  child.once('exit', (code, signal) =>
+    controller.abort(
+      new Error(`${name} exited ${signal ? `with signal ${signal}` : `with code ${code}`}`),
+    ),
+  );
+}
+
+export function waitForTcp(host, port, timeoutMs = 30_000, signal) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
+    let socket;
+    let timer;
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket?.destroy();
+      signal?.removeEventListener('abort', abort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const abort = () => finish(signal.reason);
     const attempt = () => {
-      const socket = net.connect({ host, port }, () => {
-        socket.end();
-        resolve();
-      });
-      socket.on('error', () => {
+      if (settled) return;
+      socket = net.connect({ host, port }, () => finish());
+      socket.once('error', () => {
+        if (settled) return;
         socket.destroy();
         if (Date.now() > deadline) {
-          reject(new Error(`timed out waiting for ${host}:${port}`));
+          finish(new Error(`timed out waiting for ${host}:${port}`));
           return;
         }
-        setTimeout(attempt, 200);
+        timer = setTimeout(attempt, 200);
       });
     };
+    if (signal?.aborted) return abort();
+    signal?.addEventListener('abort', abort, { once: true });
     attempt();
   });
 }
 
-export async function waitForFile(filePath, timeoutMs = 30_000) {
+export async function waitForFile(filePath, timeoutMs = 30_000, signal) {
   const deadline = Date.now() + timeoutMs;
-  while (!existsSync(filePath)) {
+  while (true) {
+    signal?.throwIfAborted();
+    if (existsSync(filePath)) return;
     if (Date.now() > deadline) {
       throw new Error(`timed out waiting for ${filePath}`);
     }
-    await delay(200);
+    try {
+      await delay(200, undefined, { signal });
+    } catch (error) {
+      throw signal?.reason ?? error;
+    }
   }
 }
 
@@ -67,12 +128,20 @@ const invokedDirectly =
   process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  await runDesktopDev();
+  try {
+    await runDesktopDev();
+  } catch (error) {
+    console.error(`[dev:desktop] ${error.message}`);
+    process.exitCode = 1;
+  }
 }
 
 async function runDesktopDev() {
   const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const desktopRoot = path.join(repositoryRoot, 'apps', 'desktop');
+  // Fail before compiling Core when a pull/install omitted root or workspace dev tools.
+  const { viteCli } = checkDesktopDevDependencies(repositoryRoot);
+  const startup = new globalThis.AbortController();
   const children = [];
   const stop = () => {
     for (const child of children) {
@@ -114,26 +183,45 @@ async function runDesktopDev() {
     }
   }
 
-  children.push(
-    spawnInherit('npm', ['run', 'dev'], { cwd: repositoryRoot }),
-    spawnInherit(process.execPath, [path.join(desktopRoot, 'scripts', 'build.mjs'), '--watch'], {
+  try {
+    const vite = spawnInherit(process.execPath, [viteCli], { cwd: repositoryRoot });
+    children.push(vite);
+    watchDevProcess(vite, 'Vite', startup);
+    const builder = spawnInherit(
+      process.execPath,
+      [path.join(desktopRoot, 'scripts', 'build.mjs'), '--watch'],
+      { cwd: desktopRoot },
+    );
+    children.push(builder);
+    watchDevProcess(builder, 'Electron build watcher', startup);
+
+    await waitForTcp(VITE_DEV_HOST, VITE_DEV_PORT, 30_000, startup.signal);
+    await waitForFile(path.join(desktopRoot, 'dist', 'main', 'index.js'), 30_000, startup.signal);
+
+    const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('electron');
+    const electron = spawnInherit(electronBinary, ['.'], {
       cwd: desktopRoot,
-    }),
-  );
-
-  await waitForTcp(VITE_DEV_HOST, VITE_DEV_PORT);
-  await waitForFile(path.join(desktopRoot, 'dist', 'main', 'index.js'));
-
-  const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('electron');
-  const electron = spawnInherit(electronBinary, ['.'], {
-    cwd: desktopRoot,
-    env: electronDevEnv(process.env),
-  });
-  children.push(electron);
-  electron.on('exit', (code) => {
+      env: electronDevEnv(process.env),
+    });
+    children.push(electron);
+    await new Promise((resolve, reject) => {
+      const abort = () => reject(startup.signal.reason);
+      startup.signal.addEventListener('abort', abort, { once: true });
+      electron.once('error', reject);
+      electron.once('exit', (code, signal) => {
+        startup.signal.removeEventListener('abort', abort);
+        if (code === 0) resolve();
+        else
+          reject(
+            new Error(`Electron exited ${signal ? `with signal ${signal}` : `with code ${code}`}`),
+          );
+      });
+      if (startup.signal.aborted) abort();
+    });
+  } finally {
+    startup.abort();
     stop();
-    process.exit(code ?? 1);
-  });
+  }
 }
 
 function spawnInherit(command, args, options) {

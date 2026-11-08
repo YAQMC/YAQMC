@@ -60,13 +60,19 @@ qqmusic-api = { path = "../qm-api-rs" }
 ## 完整桌面端运行
 
 ```powershell
-npm ci
+npm ci --include=dev --workspaces --include-workspace-root
 npm run dev:desktop
 ```
+
+拉取依赖变更后，在仓库根目录执行上述命令。桌面开发同时需要根目录的工具（`vite`）与
+桌面 workspace 的工具（`esbuild`、`electron`），且必须包含 `devDependencies`。
+只安装生产依赖或单个 workspace 不足以启动桌面开发。若提示缺少工具，重新执行上面的锁定安装，
+不要通过逐个添加依赖来修改清单。
 
 `dev:desktop` 会编译 debug `yaqmc-core`、暂存完整性清单、启动 Vite、监听
 Electron Main/preload 并启动 Electron。它不是 QA profile，可能使用正常应用
 数据目录。
+启动器会在编译 Core 前检查开发工具，并在监听构建的进程退出时停止其它进程。
 
 ## 接近发布配置的本机构建
 

@@ -69,13 +69,19 @@ exact-pin soak.
 ## Full desktop run
 
 ```powershell
-npm ci
+npm ci --include=dev --workspaces --include-workspace-root
 npm run dev:desktop
 ```
+
+Run these commands from the repository root after pulling dependency changes. Desktop development needs
+both the root tools (`vite`) and the desktop workspace tools (`esbuild` and `electron`), including
+`devDependencies`. A production-only or single-workspace install is insufficient. If startup reports
+missing tools, repeat the locked install above rather than adding individual packages to the manifests.
 
 `dev:desktop` compiles a debug `yaqmc-core`, stages its integrity manifest,
 starts Vite, watches Electron Main/preload, and launches Electron. It does not
 enable a QA profile and may use the normal application data directories.
+It checks the development tools before compiling Core and stops the other processes if a watcher exits.
 
 ## Release-shaped local build
 
