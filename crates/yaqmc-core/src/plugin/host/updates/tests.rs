@@ -3,6 +3,108 @@ use super::super::tests::{
     style_inspection,
 };
 use super::*;
+
+#[tokio::test]
+async fn first_install_validation_allows_declarative_ui_but_blocks_player_control() {
+    use crate::{
+        player::PlayerService,
+        plugin::{api::PluginBridgeRequest, bridge::dispatch_bridge, package::PackageFile},
+    };
+    use serde_json::json;
+
+    let root = tempfile::tempdir().unwrap();
+    let host = host(root.path());
+    let id = "dev.example.update";
+    assert!(host.record(id).is_err());
+    let mut inspection = style_inspection(id);
+    inspection.manifest.api_version = 4;
+    inspection.manifest.permissions = ["ui.pages", "ui.navigation", "ui.layout", "player.control"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    inspection.manifest.entrypoints.script = Some("dist/main.js".into());
+    inspection.manifest.validate().unwrap();
+    inspection.files[0].bytes = serde_json::to_vec(&inspection.manifest).unwrap();
+    inspection.files.push(PackageFile {
+        path: "dist/main.js".into(),
+        bytes: b"definePlugin({ activate() {} });".to_vec(),
+    });
+    inspection.file_count = inspection.files.len();
+    let path = root.path().join("pages-v4");
+    extract_to(&inspection, &path).unwrap();
+    let op = prepared(&host, &path).await;
+    assert_eq!(op.phase, "prepared", "{:?}", op.error);
+    let preview = op.preview.as_ref().unwrap();
+    assert!(preview.current_version.is_none());
+    assert!(preview.needs_renderer && preview.has_script && preview.enabled);
+    let hash = preview.sha256.clone();
+    host.apply_update(ApplyRequest {
+        operation_id: op.operation_id.clone(),
+        confirm: true,
+        grant: preview.added_permissions.clone(),
+        ..Default::default()
+    })
+    .unwrap();
+    let acknowledge = |stage: &str| RuntimeReadyRequest {
+        operation_id: op.operation_id.clone(),
+        sha256: hash.clone(),
+        stage: stage.into(),
+        error: None,
+    };
+    phase(&host, &op.operation_id, "quiescing").await;
+    host.update_runtime_ready(acknowledge("quiescing")).unwrap();
+    phase(&host, &op.operation_id, "validating").await;
+    let token = host.start_runtime(id).unwrap();
+    let player = PlayerService::new();
+    for (method, payload) in [
+        ("ui.pages.register", json!({"id":"page", "title":"Page"})),
+        (
+            "ui.pages.render",
+            json!({"pageId":"page", "blocks":[{"type":"text", "text":"Ready"}]}),
+        ),
+        (
+            "ui.navigation.register",
+            json!({"id":"nav", "label":"Page", "pageId":"page"}),
+        ),
+        (
+            "ui.layout.set",
+            json!({"target":"home", "order":["radar","for-you"]}),
+        ),
+        ("ui.layout.clear", json!({"target":"home"})),
+        ("ui.navigation.unregister", json!({"id":"nav"})),
+        ("ui.pages.unregister", json!({"pageId":"page"})),
+    ] {
+        let response = dispatch_bridge(
+            &host,
+            &player,
+            &PluginBridgeRequest {
+                token: token.token.clone(),
+                method: method.into(),
+                payload,
+            },
+        )
+        .await
+        .expect(method);
+        assert_eq!(response["ok"], json!(true), "{method}");
+    }
+    let error = dispatch_bridge(
+        &host,
+        &player,
+        &PluginBridgeRequest {
+            token: token.token.clone(),
+            method: "player.pause".into(),
+            payload: json!({}),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error, "update-validation-in-progress");
+    host.update_runtime_ready(acknowledge("validating"))
+        .unwrap();
+    let completed = wait(&host, &op.operation_id, false).await;
+    assert_eq!(completed.phase, "completed", "{:?}", completed.error);
+    assert_eq!(host.record(id).unwrap().version, "1.0.0");
+}
 use crate::credentials::MemoryCredentialStore;
 
 fn fixture(root: &Path, version: &str, style: &str) -> PathBuf {

@@ -86,6 +86,8 @@ async fn dispatch_active_bridge(
             .ok_or_else(|| "unknown plugin runtime".to_owned())?
     };
     if host.update_in_progress(&runtime.plugin_id)
+        // Declarative UI is staged by the renderer until candidate validation completes.
+        && !is_page_ui_method(&request.method)
         && !matches!(
             request.method.as_str(),
             "storage.get"
@@ -97,8 +99,6 @@ async fn dispatch_active_bridge(
                 | "ui.contextMenu.track.register"
                 | "ui.playerBar.register"
                 | "ui.sidebar.register"
-                | "ui.pages.register"
-                | "ui.navigation.register"
         )
     {
         return Err("update-validation-in-progress".into());
