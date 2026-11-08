@@ -660,6 +660,12 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Core,
         OriginClass::Main,
     ),
+    spec("plugin_store_search", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "plugin_store_releases",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
     spec("plugin_inspect_path", MethodOwner::Core, OriginClass::Main),
     spec("plugin_install", MethodOwner::Core, OriginClass::Main),
     spec("plugin_set_enabled", MethodOwner::Core, OriginClass::Main),
@@ -842,6 +848,9 @@ const fn timeout_class(name: &str) -> TimeoutClass {
         || const_eq(name, "plugin_install_from")
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")
+        // GitHub metadata reads can spend DNS, connect and body timeouts across redirects.
+        || const_eq(name, "plugin_store_search")
+        || const_eq(name, "plugin_store_releases")
         || const_eq(name, "diagnostics_export_bundle_to")
         || const_eq(name, "statistics_export_to")
         || const_eq(name, "platform_export_diagnostics")

@@ -5,6 +5,16 @@ use crate::plugin::api::PluginBridgeRequest;
 use crate::plugin::host::ExtensionHost;
 use crate::plugin::permissions::PluginPermission;
 
+/// Upper bound for one API v4 page/navigation/layout payload. The renderer enforces the
+/// structural schema; Core bounds what any single call can push across the bridge.
+pub const MAX_PAGE_UI_PAYLOAD_BYTES: usize = 64 * 1024;
+
+fn is_page_ui_method(method: &str) -> bool {
+    method.starts_with("ui.pages.")
+        || method.starts_with("ui.navigation.")
+        || method.starts_with("ui.layout.")
+}
+
 pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, String> {
     match method {
         "track.get" | "track.read" => Ok(Some(PluginPermission::TrackRead)),
@@ -20,6 +30,13 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
         "ui.playerBar.register" => Ok(Some(PluginPermission::UiPlayerBar)),
         "ui.sidebar.register" => Ok(Some(PluginPermission::UiSidebar)),
         "ui.notify" => Ok(Some(PluginPermission::UiNotify)),
+        "ui.pages.register" | "ui.pages.render" | "ui.pages.unregister" => {
+            Ok(Some(PluginPermission::UiPages))
+        }
+        "ui.navigation.register" | "ui.navigation.unregister" => {
+            Ok(Some(PluginPermission::UiNavigation))
+        }
+        "ui.layout.set" | "ui.layout.clear" => Ok(Some(PluginPermission::UiLayout)),
         "network.request" => Ok(Some(PluginPermission::Network)),
         "scenes.onMount"
         | "scenes.onUnmount"
@@ -80,9 +97,17 @@ async fn dispatch_active_bridge(
                 | "ui.contextMenu.track.register"
                 | "ui.playerBar.register"
                 | "ui.sidebar.register"
+                | "ui.pages.register"
+                | "ui.navigation.register"
         )
     {
         return Err("update-validation-in-progress".into());
+    }
+    if is_page_ui_method(&request.method)
+        && serde_json::to_vec(&request.payload)
+            .map_or(true, |bytes| bytes.len() > MAX_PAGE_UI_PAYLOAD_BYTES)
+    {
+        return Err("plugin-ui-payload-too-large".into());
     }
     let rate_key = if request.method == "player.seek" {
         "player.seek"
@@ -284,6 +309,13 @@ async fn dispatch_active_bridge(
         "ui.contextMenu.track.register"
         | "ui.playerBar.register"
         | "ui.sidebar.register"
+        | "ui.pages.register"
+        | "ui.pages.render"
+        | "ui.pages.unregister"
+        | "ui.navigation.register"
+        | "ui.navigation.unregister"
+        | "ui.layout.set"
+        | "ui.layout.clear"
         | "scenes.onMount"
         | "scenes.onUnmount"
         | "scenes.setVariable"
@@ -354,6 +386,36 @@ mod tests {
             Some(PluginPermission::SceneRegister)
         );
         assert!(required_permission("player_seek").is_err());
+    }
+
+    #[test]
+    fn page_ui_methods_require_their_own_v4_permission() {
+        for (method, permission) in [
+            ("ui.pages.register", PluginPermission::UiPages),
+            ("ui.pages.render", PluginPermission::UiPages),
+            ("ui.pages.unregister", PluginPermission::UiPages),
+            ("ui.navigation.register", PluginPermission::UiNavigation),
+            ("ui.navigation.unregister", PluginPermission::UiNavigation),
+            ("ui.layout.set", PluginPermission::UiLayout),
+            ("ui.layout.clear", PluginPermission::UiLayout),
+        ] {
+            assert_eq!(
+                required_permission(method).unwrap(),
+                Some(permission),
+                "{method}"
+            );
+            assert!(is_page_ui_method(method));
+        }
+        // No undeclared method under the v4 namespaces is routable.
+        for method in [
+            "ui.pages.html",
+            "ui.navigation.open",
+            "ui.layout.css",
+            "ui.pages",
+        ] {
+            assert!(required_permission(method).is_err(), "{method}");
+        }
+        assert!(!is_page_ui_method("ui.sidebar.register"));
     }
 
     #[test]

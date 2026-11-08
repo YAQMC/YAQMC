@@ -221,17 +221,42 @@ impl UpdateHttp {
     }
 
     async fn response(&self, url: &str, origins: &[String]) -> Result<reqwest::Response, String> {
+        let response = self.request(url, origins, &[]).await?;
+        if !response.status().is_success() {
+            return Err("update-http-failed".into());
+        }
+        Ok(response)
+    }
+
+    /// Follows at most three redirects, re-validating every hop against `origins`
+    /// and the private-address filter. Returns the final response of any status.
+    /// Only the caller's fixed headers are sent; never credentials or cookies.
+    pub(crate) async fn request(
+        &self,
+        url: &str,
+        origins: &[String],
+        headers: &[(&str, &str)],
+    ) -> Result<reqwest::Response, String> {
         let mut current = url.to_owned();
         for hop in 0..=3 {
             let url = validate_url(&current, origins)?;
             let (client, target) = self.client_target(&url).await?;
-            let response = client
+            let mut request = client
                 .get(target)
-                .header(reqwest::header::ACCEPT_ENCODING, "identity")
-                .send()
-                .await
-                .map_err(|_| "update-download-failed")?;
-            if response.status().is_redirection() {
+                .header(reqwest::header::ACCEPT_ENCODING, "identity");
+            for (name, value) in headers {
+                request = request.header(*name, *value);
+            }
+            let response = request.send().await.map_err(|error| {
+                if error.is_timeout() {
+                    "update-download-timeout"
+                } else {
+                    "update-download-failed"
+                }
+            })?;
+            if response.status().is_redirection()
+                && response.status() != reqwest::StatusCode::NOT_MODIFIED
+            {
                 if hop == 3 {
                     return Err("update-too-many-redirects".into());
                 }
@@ -245,9 +270,6 @@ impl UpdateHttp {
                     .map_err(|_| "update-redirect-invalid")?
                     .to_string();
                 continue;
-            }
-            if !response.status().is_success() {
-                return Err("update-http-failed".into());
             }
             return Ok(response);
         }
@@ -292,13 +314,48 @@ impl UpdateHttp {
         cancel: &CancellationToken,
         progress: impl Fn(u64),
     ) -> Result<(), String> {
+        let sha256 = self
+            .download_to(
+                &record.url,
+                &source.download_origins,
+                &[],
+                record.size,
+                Some(record.size),
+                path,
+                cancel,
+                progress,
+            )
+            .await?;
+        if sha256 != record.sha256 {
+            let _ = tokio::fs::remove_file(path).await;
+            return Err("update-hash-mismatch".into());
+        }
+        Ok(())
+    }
+
+    /// Streams a bounded body into a new private file and returns its SHA-256.
+    /// Any failure, timeout or cancellation removes the partial file.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn download_to(
+        &self,
+        url: &str,
+        origins: &[String],
+        headers: &[(&str, &str)],
+        max_bytes: u64,
+        expected_size: Option<u64>,
+        path: &Path,
+        cancel: &CancellationToken,
+        progress: impl Fn(u64),
+    ) -> Result<String, String> {
         let mut created = false;
         let action = async {
-            let mut response = self.response(&record.url, &source.download_origins).await?;
-            if response
-                .content_length()
-                .is_some_and(|size| size != record.size)
-            {
+            let mut response = self.request(url, origins, headers).await?;
+            if !response.status().is_success() {
+                return Err("update-http-failed".into());
+            }
+            if response.content_length().is_some_and(|size| {
+                size > max_bytes || expected_size.is_some_and(|expected| size != expected)
+            }) {
                 return Err("update-size-mismatch".into());
             }
             let mut file = tokio::fs::OpenOptions::new()
@@ -318,7 +375,7 @@ impl UpdateHttp {
                 total = total
                     .checked_add(chunk.len() as u64)
                     .ok_or("update-size-mismatch")?;
-                if total > record.size {
+                if total > max_bytes {
                     return Err("update-size-mismatch".into());
                 }
                 digest.update(&chunk);
@@ -328,10 +385,10 @@ impl UpdateHttp {
                 progress(total);
             }
             file.sync_all().await.map_err(|_| "update-file-failed")?;
-            if total != record.size || format!("{:x}", digest.finalize()) != record.sha256 {
+            if expected_size.is_some_and(|expected| total != expected) {
                 return Err("update-hash-mismatch".into());
             }
-            Ok::<(), String>(())
+            Ok::<String, String>(format!("{:x}", digest.finalize()))
         };
         let result = tokio::select! {
             _ = cancel.cancelled() => Err("update-cancelled".into()),
@@ -345,6 +402,7 @@ impl UpdateHttp {
 
     async fn client_target(&self, url: &Url) -> Result<(reqwest::Client, Url), String> {
         let builder = reqwest::Client::builder()
+            .user_agent(concat!("YAQMC/", env!("CARGO_PKG_VERSION")))
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30));

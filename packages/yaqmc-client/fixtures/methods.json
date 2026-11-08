@@ -2160,6 +2160,32 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "plugin_store_search",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "long",
+    "timeoutMs": 120000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "plugin_store_releases",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "long",
+    "timeoutMs": 120000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "plugin_inspect_path",
     "owner": "core",
     "requestCap": 1048576,

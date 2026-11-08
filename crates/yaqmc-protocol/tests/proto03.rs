@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_207_method_single_source_of_truth() {
+fn registry_is_the_209_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 182 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 184 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -101,6 +101,8 @@ fn plugin_updates_are_only_available_to_host_and_main_window() {
         "plugin_update_cancel",
         "plugin_update_runtime_ready",
         "plugin_update_editing",
+        "plugin_store_search",
+        "plugin_store_releases",
     ] {
         let spec = method(name).unwrap();
         assert_eq!(

@@ -11,8 +11,8 @@ describe('createAndroidBridge', () => {
     expect(bridge.kind).toBe('android');
     expect(bridge.capabilities).toMatchObject({
       windowControls: false,
-      lyricsSurfaces: false,
-      plugins: false,
+      lyricsSurfaces: true,
+      plugins: true,
       localApi: false,
       fileExport: false,
       fileImport: true,
@@ -45,6 +45,10 @@ describe('createAndroidBridge', () => {
       clipboardSet: vi.fn().mockResolvedValue(undefined),
       nativeShare: vi.fn().mockResolvedValue(undefined),
       pickBackgroundImage: vi.fn().mockResolvedValue({ path: '/private/selected.image' }),
+      pickPluginPackage: vi
+        .fn()
+        .mockResolvedValueOnce({ path: '/cache/plugin-imports/selected-1.yaqmc-plugin' })
+        .mockResolvedValueOnce({ path: null }),
       addListener: vi.fn().mockResolvedValue({ remove: vi.fn().mockResolvedValue(undefined) }),
     };
     const api = readCapacitorAndroidApi({
@@ -67,6 +71,12 @@ describe('createAndroidBridge', () => {
     await expect(api?.dialog?.pickFile({ kind: 'background-image' })).resolves.toBe(
       '/private/selected.image',
     );
+    // Plugin packages use the SAF picker; a cancelled picker is null, never a URI.
+    await expect(api?.dialog?.pickFile({ kind: 'plugin-package' })).resolves.toBe(
+      '/cache/plugin-imports/selected-1.yaqmc-plugin',
+    );
+    await expect(api?.dialog?.pickFile({ kind: 'plugin-package' })).resolves.toBeNull();
+    expect(plugin.pickPluginPackage).toHaveBeenCalledTimes(2);
   });
 
   it('delivers a retained cold-start deep link once the renderer subscribes', () => {

@@ -40,7 +40,7 @@
     "method": "core_ping"
   },
   "core_shutdown_cancel": {
-    "id": 116,
+    "id": 118,
     "kind": "request",
     "method": "core_shutdown_cancel",
     "origin": "main",
@@ -73,35 +73,35 @@
     }
   },
   "host_updater_cancel": {
-    "id": 114,
+    "id": 116,
     "kind": "request",
     "method": "host_updater_cancel",
     "origin": "main",
     "params": {}
   },
   "host_updater_check": {
-    "id": 109,
+    "id": 111,
     "kind": "request",
     "method": "host_updater_check",
     "origin": "main",
     "params": {}
   },
   "host_updater_download": {
-    "id": 110,
+    "id": 112,
     "kind": "request",
     "method": "host_updater_download",
     "origin": "main",
     "params": {}
   },
   "host_updater_install": {
-    "id": 111,
+    "id": 113,
     "kind": "request",
     "method": "host_updater_install",
     "origin": "main",
     "params": {}
   },
   "host_updater_preferences": {
-    "id": 115,
+    "id": 117,
     "kind": "request",
     "method": "host_updater_preferences",
     "origin": "main",
@@ -110,7 +110,7 @@
     }
   },
   "host_updater_start": {
-    "id": 113,
+    "id": 115,
     "kind": "request",
     "method": "host_updater_start",
     "origin": "main",
@@ -119,7 +119,7 @@
     }
   },
   "host_updater_status": {
-    "id": 112,
+    "id": 114,
     "kind": "request",
     "method": "host_updater_status",
     "origin": "main",
@@ -229,6 +229,36 @@
         "enable": false,
         "grant": [],
         "path": "/tmp/plugin.yaqmc-plugin"
+      }
+    }
+  },
+  "plugin_store_releases": {
+    "id": 110,
+    "kind": "request",
+    "method": "plugin_store_releases",
+    "origin": "main",
+    "params": {
+      "request": {
+        "includePrereleases": false,
+        "owner": "YAQMC",
+        "page": 1,
+        "refresh": false,
+        "repo": "yaqmc-music-providers"
+      }
+    }
+  },
+  "plugin_store_search": {
+    "id": 109,
+    "kind": "request",
+    "method": "plugin_store_search",
+    "origin": "main",
+    "params": {
+      "request": {
+        "filter": "all",
+        "page": 1,
+        "query": "lyrics",
+        "refresh": false,
+        "sort": "best-match"
       }
     }
   },

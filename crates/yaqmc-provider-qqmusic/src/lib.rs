@@ -241,6 +241,7 @@ mod tests {
             playback_capability: None,
             provider: Some(ProviderTrackReference {
                 provider_id: "plugin.missing".to_owned(),
+                origin_provider_id: None,
                 profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: "1".to_owned(),
                 numeric_id: None,

@@ -93,6 +93,10 @@ import type {
   PluginUpdateApplyRequest,
   PluginUpdateOperation,
   PluginUpdateRuntimeReadyRequest,
+  PluginStoreSearchRequest,
+  PluginStoreSearchPage,
+  PluginStoreReleasesRequest,
+  PluginStoreReleasesPage,
 } from './plugin-updates';
 
 export const MIGRATED_METHOD_NAMES = [
@@ -260,6 +264,8 @@ export const MIGRATED_METHOD_NAMES = [
   'plugin_update_cancel',
   'plugin_update_runtime_ready',
   'plugin_update_editing',
+  'plugin_store_search',
+  'plugin_store_releases',
   'plugin_inspect_path',
   'plugin_install',
   'plugin_set_enabled',
@@ -596,6 +602,8 @@ export type MethodParams = Exhaustive<{
   plugin_update_cancel: { operationId: string };
   plugin_update_runtime_ready: NamedRequest<PluginUpdateRuntimeReadyRequest>;
   plugin_update_editing: { id: string; editing: boolean };
+  plugin_store_search: NamedRequest<PluginStoreSearchRequest>;
+  plugin_store_releases: NamedRequest<PluginStoreReleasesRequest>;
   plugin_inspect_path: { path: string };
   plugin_install: NamedRequest<PluginInstallRequest>;
   plugin_set_enabled: NamedRequest<PluginEnableRequest>;
@@ -816,6 +824,8 @@ export type MethodResult = Exhaustive<{
   plugin_update_cancel: void;
   plugin_update_runtime_ready: void;
   plugin_update_editing: void;
+  plugin_store_search: PluginStoreSearchPage;
+  plugin_store_releases: PluginStoreReleasesPage;
   plugin_inspect_path: PluginInspectResult;
   plugin_install: PluginRecord;
   plugin_set_enabled: PluginRecord;

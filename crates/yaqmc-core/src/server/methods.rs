@@ -192,6 +192,8 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_update_cancel",
     "plugin_update_runtime_ready",
     "plugin_update_editing",
+    "plugin_store_search",
+    "plugin_store_releases",
     "plugin_inspect_path",
     "plugin_install",
     "plugin_set_enabled",
@@ -1865,6 +1867,18 @@ async fn invoke_core(
                 .map_err(|e| e.to_string()))
         }
         #[cfg(feature = "plugins")]
+        "plugin_store_search" => {
+            let NamedRequest::<crate::plugin::store::StoreSearchRequest> { request } =
+                parse(&params)?;
+            cmd(core.plugins().store_search(request).await)
+        }
+        #[cfg(feature = "plugins")]
+        "plugin_store_releases" => {
+            let NamedRequest::<crate::plugin::store::StoreReleasesRequest> { request } =
+                parse(&params)?;
+            cmd(core.plugins().store_releases(request).await)
+        }
+        #[cfg(feature = "plugins")]
         "plugin_list" => ok(ops::plugin_list(&core.plugins())),
         #[cfg(feature = "plugins")]
         "plugin_inspect_path" => {
@@ -2166,6 +2180,8 @@ async fn invoke_core(
         | "plugin_update_cancel"
         | "plugin_update_runtime_ready"
         | "plugin_update_editing"
+        | "plugin_store_search"
+        | "plugin_store_releases"
         | "plugin_install_from" => Err(DispatchError::Unavailable { feature: "plugins" }),
         other => {
             debug_assert!(

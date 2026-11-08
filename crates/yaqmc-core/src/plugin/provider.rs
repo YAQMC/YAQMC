@@ -1979,6 +1979,12 @@ fn validate_value(value: &Value, depth: usize, nodes: &mut usize) -> ProviderRes
             Ok(())
         }
         Value::Object(values) => {
+            // This field is host-owned federation metadata, never a guest routing claim.
+            if values.contains_key("originProviderId") {
+                return Err(invalid_response(
+                    "the provider returned reserved origin metadata",
+                ));
+            }
             for value in values.values() {
                 validate_value(value, depth + 1, nodes)?;
             }
@@ -1999,6 +2005,13 @@ fn invalid_response(message: &str) -> ProviderCommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn guests_cannot_claim_host_owned_federation_origin() {
+        let value = serde_json::json!({"items": [{"provider": {
+            "providerId": "dev.example.catalog", "originProviderId": "other.catalog"
+        }}]});
+        assert!(validate_value(&value, 0, &mut 0).is_err());
+    }
     use crate::{
         credentials::MemoryCredentialStore,
         plugin::{

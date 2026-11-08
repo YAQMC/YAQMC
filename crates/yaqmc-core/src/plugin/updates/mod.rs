@@ -117,6 +117,9 @@ pub struct PrepareRequest {
     pub release_id: Option<String>,
     #[serde(default)]
     pub unpacked: bool,
+    /// Plugin store asset; downloaded by the host and reviewed as unverified.
+    #[serde(default)]
+    pub github: Option<crate::plugin::store::StoreAssetRef>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -152,6 +155,9 @@ pub struct UpdatePreview {
     pub session_changes: Vec<String>,
     pub confirmations: Vec<String>,
     pub trusted_source: Option<String>,
+    /// Recorded installation source for unsigned packages (`github:owner/repo/releases/id`).
+    #[serde(default)]
+    pub origin: Option<String>,
     pub enabled: bool,
     pub needs_renderer: bool,
     pub has_script: bool,

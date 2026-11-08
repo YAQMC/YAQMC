@@ -94,6 +94,8 @@ export interface AudioFormatInfo {
 
 export interface ProviderTrackReference {
   providerId: string;
+  /** Host-provided original catalog member; never used to route playback. */
+  originProviderId?: string;
   profileId: string;
   trackId: string;
   numericId?: number;
@@ -321,6 +323,7 @@ export interface LyricLine {
 
 export interface LyricMetadata {
   sourceLabel: string;
+  /** BCP 47 tag of the sung language when the provider knows it. */
   language?: string;
   translatedLanguage?: string;
   offsetMs: number;
@@ -1221,6 +1224,19 @@ export interface ActiveScriptResource {
   source: string;
 }
 
+export interface PluginSongBadgeDeclaration {
+  id: string;
+  providerIds: string[];
+  label: string;
+  labels?: Record<string, string>;
+  color?: string;
+}
+
+export interface ActiveSongBadge extends PluginSongBadgeDeclaration {
+  pluginId: string;
+  pluginName: string;
+}
+
 export interface ActivePluginResources {
   safeMode: boolean;
   developerMode: boolean;
@@ -1228,6 +1244,7 @@ export interface ActivePluginResources {
   styles: ActiveStyleSheet[];
   scenes: ActiveSceneResource[];
   scripts: ActiveScriptResource[];
+  songBadges?: ActiveSongBadge[];
 }
 
 export interface PluginInspectResult {

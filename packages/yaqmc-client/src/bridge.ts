@@ -31,7 +31,8 @@ export const DESKTOP_HOST_CAPABILITIES: Readonly<HostCapabilities> = {
 
 export const ANDROID_HOST_CAPABILITIES: Readonly<HostCapabilities> = {
   windowControls: false,
-  lyricsSurfaces: false,
+  // Native overlay windows: floating lyrics and an app-drawn island-style pill.
+  lyricsSurfaces: true,
   plugins: false,
   localApi: false,
   fileExport: false,

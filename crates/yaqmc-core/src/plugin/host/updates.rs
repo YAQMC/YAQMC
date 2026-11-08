@@ -16,6 +16,7 @@ pub(super) struct UpdateState {
     releases: Mutex<BTreeMap<String, remote::AvailableRelease>>,
     sources: Vec<remote::TrustedSource>,
     http: remote::UpdateHttp,
+    store: crate::plugin::store::StoreCache,
     lifecycle: Arc<Mutex<HashSet<String>>>,
     serial: tokio::sync::Mutex<()>,
     downloads: Semaphore,
@@ -53,6 +54,7 @@ struct Operation {
     status: UpdateOperation,
     prepared: Option<Prepared>,
     release_id: Option<String>,
+    github: Option<crate::plugin::store::StoreAssetRef>,
     cancel: CancellationToken,
     accepted: Option<ApplyRequest>,
     renderer_ack: Option<Result<(), String>>,
@@ -129,6 +131,7 @@ impl UpdateState {
             releases: Mutex::new(BTreeMap::new()),
             sources: remote::builtin_sources(),
             http: remote::UpdateHttp::default(),
+            store: Default::default(),
             lifecycle: Arc::new(Mutex::new(HashSet::new())),
             serial: tokio::sync::Mutex::new(()),
             downloads: Semaphore::new(2),
@@ -641,6 +644,7 @@ impl ExtensionHost {
                 status: status.clone(),
                 prepared: None,
                 release_id: None,
+                github: None,
                 cancel: cancel.clone(),
                 accepted: None,
                 renderer_ack: None,
@@ -695,6 +699,7 @@ impl ExtensionHost {
                                         });
                                     if !existing {
                                         if let Ok(operation) = host.prepare_update(PrepareRequest {
+                                            github: None,
                                             plugin_id: Some(source.plugin_id.clone()),
                                             path: None,
                                             release_id: Some(release.release_id.clone()),
@@ -1422,10 +1427,15 @@ impl ExtensionHost {
             granted_permissions: preview.permissions.clone(),
             package_sha256: preview.sha256.clone(),
             content_sha256: prepared.content_sha256.clone(),
-            source: preview
-                .trusted_source
-                .as_ref()
-                .map_or_else(|| "local-file".into(), |s| format!("trusted:{s}")),
+            source: preview.trusted_source.as_ref().map_or_else(
+                || {
+                    preview
+                        .origin
+                        .clone()
+                        .unwrap_or_else(|| "local-file".into())
+                },
+                |s| format!("trusted:{s}"),
+            ),
             style_scan: prepared.style_scan.clone(),
             script_scan: prepared.script_scan.clone(),
             unpacked_path: prepared.unpacked_path.clone(),
@@ -1986,6 +1996,28 @@ impl ExtensionHost {
         self.updates.events.subscribe()
     }
 
+    pub async fn store_search(
+        &self,
+        request: crate::plugin::store::StoreSearchRequest,
+    ) -> Result<crate::plugin::store::StoreSearchPage, String> {
+        let cancel = self.updates.shutdown.child_token();
+        self.updates
+            .store
+            .search(&self.updates.http, request, &cancel)
+            .await
+    }
+
+    pub async fn store_releases(
+        &self,
+        request: crate::plugin::store::StoreReleasesRequest,
+    ) -> Result<crate::plugin::store::StoreReleasesPage, String> {
+        let cancel = self.updates.shutdown.child_token();
+        self.updates
+            .store
+            .releases(&self.updates.http, request, &cancel)
+            .await
+    }
+
     pub fn update_sources(&self) -> Vec<remote::TrustedSource> {
         self.updates.sources.clone()
     }
@@ -2229,7 +2261,15 @@ impl ExtensionHost {
         if self.updates.app_restart.load(Ordering::Acquire) {
             return Err(HostError::from("application-update-in-progress"));
         }
-        if request.path.is_some() == request.release_id.is_some() {
+        let sources = [
+            request.path.is_some(),
+            request.release_id.is_some(),
+            request.github.is_some(),
+        ];
+        if sources.iter().filter(|present| **present).count() != 1 {
+            return Err(HostError::from("update-source-required"));
+        }
+        if request.github.is_some() && request.unpacked {
             return Err(HostError::from("update-source-required"));
         }
         if request.unpacked && !self.developer_mode() {
@@ -2240,6 +2280,13 @@ impl ExtensionHost {
             .operations
             .lock()
             .unwrap_or_else(|p| p.into_inner());
+        // A repeated click or a remounted page rejoins the running store operation.
+        if let Some(existing) = request.github.as_ref().and_then(|github| {
+            ops.values()
+                .find(|o| !o.status.terminal() && o.github.as_ref() == Some(github))
+        }) {
+            return Ok(existing.status.clone());
+        }
         if ops.values().filter(|o| !o.status.terminal()).count() >= 8 {
             return Err(HostError::from("update-queue-full"));
         }
@@ -2265,6 +2312,7 @@ impl ExtensionHost {
                 status: status.clone(),
                 prepared: None,
                 release_id: request.release_id.clone(),
+                github: request.github.clone(),
                 cancel: cancel.clone(),
                 accepted: None,
                 renderer_ack: None,
@@ -2341,7 +2389,58 @@ impl ExtensionHost {
                     .ok_or("update-release-missing")
             })
             .transpose()?;
-        let path = if let Some(release) = &remote_release {
+        let mut origin = None;
+        let path = if let Some(github) = &request.github {
+            let asset = self
+                .updates
+                .store
+                .resolve_asset(
+                    &self.updates.http,
+                    github,
+                    crate::plugin::COMPONENT_MAX_COMPRESSED_BYTES,
+                    cancel,
+                )
+                .await?;
+            let _permit = tokio::select! { _ = cancel.cancelled() => return Err("update-cancelled".into()), p = self.updates.downloads.acquire() => p.map_err(|_| "update-shutdown")? };
+            let path = directory.join("download.yaqmc-plugin");
+            let origins = crate::plugin::store::DOWNLOAD_ORIGINS.map(str::to_owned);
+            let sha256 = self
+                .updates
+                .http
+                .download_to(
+                    &asset.download_url,
+                    &origins,
+                    &[("accept", "application/octet-stream")],
+                    asset.asset.size,
+                    Some(asset.asset.size),
+                    &path,
+                    cancel,
+                    |count| {
+                        let mut ops = self
+                            .updates
+                            .operations
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner());
+                        if let Some(op) = ops.get_mut(id) {
+                            op.status.downloaded_bytes = count;
+                            op.status.total_bytes = Some(asset.asset.size);
+                            let _ = self.updates.events.send(op.status.clone());
+                        }
+                    },
+                )
+                .await?;
+            if asset
+                .asset
+                .sha256
+                .as_ref()
+                .is_some_and(|digest| digest != &sha256)
+            {
+                let _ = tokio::fs::remove_file(&path).await;
+                return Err("store-asset-digest-mismatch".into());
+            }
+            origin = Some(crate::plugin::store::source_label(&asset));
+            path
+        } else if let Some(release) = &remote_release {
             if now_ms() >= release.expires_at_ms {
                 return Err("update-feed-expired".into());
             }
@@ -2389,6 +2488,7 @@ impl ExtensionHost {
                 &directory,
                 request,
                 remote_release,
+                origin,
                 &cancel,
             )
         })
@@ -2396,6 +2496,7 @@ impl ExtensionHost {
         .map_err(|_| "update-prepare-failed")?
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_sync(
         &self,
         operation_id: &str,
@@ -2403,6 +2504,7 @@ impl ExtensionHost {
         directory: &Path,
         request: PrepareRequest,
         remote_release: Option<remote::AvailableRelease>,
+        origin: Option<String>,
         cancel: &CancellationToken,
     ) -> Result<(), String> {
         let inspection = if remote_release.is_none()
@@ -2542,6 +2644,17 @@ impl ExtensionHost {
         if remote_release.is_none() {
             confirmations.push("unverified-source".into());
         }
+        // The same plugin id from another store repository (or between the store and a
+        // local file) is never a silent replacement.
+        if let Some(state) = current {
+            let installed = crate::plugin::store::source_repository(&state.source);
+            let incoming = origin
+                .as_deref()
+                .and_then(crate::plugin::store::source_repository);
+            if (installed.is_some() || incoming.is_some()) && installed != incoming {
+                confirmations.push("source-change".into());
+            }
+        }
         let expires_at_ms = remote_release.as_ref().map(|r| r.expires_at_ms);
         let needs_renderer = manifest.entrypoints.component.is_none()
             || old
@@ -2573,6 +2686,7 @@ impl ExtensionHost {
             session_changes,
             confirmations,
             trusted_source: remote_release.map(|r| r.source_id),
+            origin,
             enabled: current.is_none_or(|s| s.enabled),
             needs_renderer,
             has_script: manifest.entrypoints.script.is_some(),

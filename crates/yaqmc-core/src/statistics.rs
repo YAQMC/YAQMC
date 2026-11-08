@@ -864,6 +864,7 @@ mod tests {
             playback_capability: None,
             provider: Some(yaqmc_provider_api::ProviderTrackReference {
                 provider_id: "fake".to_owned(),
+                origin_provider_id: None,
                 profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: id.to_owned(),
                 numeric_id: None,

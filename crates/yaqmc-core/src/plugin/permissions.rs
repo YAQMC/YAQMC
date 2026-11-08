@@ -18,6 +18,10 @@ pub enum PluginPermission {
     UiPlayerBar,
     UiSidebar,
     UiNotify,
+    UiSongBadges,
+    UiPages,
+    UiNavigation,
+    UiLayout,
     Network,
     ProviderCatalog,
     ProviderPlayback,
@@ -39,6 +43,7 @@ pub const V1_PERMISSIONS: &[PluginPermission] = &[
 ];
 
 pub const V2_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::UiSongBadges,
     PluginPermission::UiContextMenu,
     PluginPermission::UiPlayerBar,
     PluginPermission::UiSidebar,
@@ -46,7 +51,16 @@ pub const V2_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::Network,
 ];
 
+/// API v4 extends the compositional (manifest v1) shape: plugin pages, navigation entries for
+/// those pages, and host-defined layout knobs. Provider Components (API v3) cannot request them.
+pub const V4_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::UiPages,
+    PluginPermission::UiNavigation,
+    PluginPermission::UiLayout,
+];
+
 pub const V3_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::UiSongBadges,
     PluginPermission::PluginStorage,
     PluginPermission::Network,
     PluginPermission::ProviderCatalog,
@@ -91,6 +105,10 @@ impl PluginPermission {
             Self::UiPlayerBar => "ui.playerBar",
             Self::UiSidebar => "ui.sidebar",
             Self::UiNotify => "ui.notify",
+            Self::UiSongBadges => "ui.songBadges",
+            Self::UiPages => "ui.pages",
+            Self::UiNavigation => "ui.navigation",
+            Self::UiLayout => "ui.layout",
             Self::Network => "network",
             Self::ProviderCatalog => "provider.catalog",
             Self::ProviderPlayback => "provider.playback",
@@ -116,6 +134,10 @@ impl PluginPermission {
             Self::UiPlayerBar => "Add Player Bar actions",
             Self::UiSidebar => "Add sidebar commands",
             Self::UiNotify => "Show notifications",
+            Self::UiSongBadges => "Display plugin-defined song badges",
+            Self::UiPages => "Add plugin pages",
+            Self::UiNavigation => "Add navigation entries for its pages",
+            Self::UiLayout => "Rearrange supported YAQMC page sections",
             Self::Network => "Scoped HTTPS network access",
             Self::ProviderCatalog => "Provide catalog and discovery data",
             Self::ProviderPlayback => "Resolve playable sources",
@@ -160,6 +182,7 @@ pub fn parse_permission(
         .iter()
         .chain(V2_PERMISSIONS.iter())
         .chain(V3_PERMISSIONS.iter())
+        .chain(V4_PERMISSIONS.iter())
     {
         if permission.as_str() == value {
             return Ok((*permission, None));
@@ -180,6 +203,11 @@ pub fn permission_allowed_for_api(permission: PluginPermission, api_version: u32
         1 => V1_PERMISSIONS.contains(&permission),
         2 => V1_PERMISSIONS.contains(&permission) || V2_PERMISSIONS.contains(&permission),
         3 => V3_PERMISSIONS.contains(&permission),
+        4 => {
+            V1_PERMISSIONS.contains(&permission)
+                || V2_PERMISSIONS.contains(&permission)
+                || V4_PERMISSIONS.contains(&permission)
+        }
         _ => false,
     }
 }
@@ -348,5 +376,36 @@ mod tests {
         assert!(PluginPermission::ProviderPlayback.sensitive());
         assert!(PluginPermission::ProviderAccount.sensitive());
         assert!(!PluginPermission::ProviderCatalog.sensitive());
+    }
+
+    #[test]
+    fn page_permissions_are_v4_only_and_v4_keeps_the_v2_surface() {
+        for (name, permission) in [
+            ("ui.pages", PluginPermission::UiPages),
+            ("ui.navigation", PluginPermission::UiNavigation),
+            ("ui.layout", PluginPermission::UiLayout),
+        ] {
+            assert_eq!(parse_permission(name).unwrap(), (permission, None));
+            assert!(permission_allowed_for_api(permission, 4));
+            for older in [1, 2, 3, 5] {
+                assert!(!permission_allowed_for_api(permission, older));
+            }
+            assert!(!permission.sensitive());
+        }
+        for carried in [
+            PluginPermission::TrackRead,
+            PluginPermission::UiSidebar,
+            PluginPermission::Network,
+        ] {
+            assert!(permission_allowed_for_api(carried, 4));
+        }
+        assert!(!permission_allowed_for_api(
+            PluginPermission::ProviderCatalog,
+            4
+        ));
+        assert_eq!(
+            parse_permission("ui.pages.raw"),
+            Err(PermissionError::Unknown)
+        );
     }
 }

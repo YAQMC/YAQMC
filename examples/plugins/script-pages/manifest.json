@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.pages",
+  "name": "Listening log",
+  "description": "API v4 example: a plugin page, a sidebar entry for it, and a Home layout preference.",
+  "version": "1.0.0",
+  "apiVersion": 4,
+  "authors": ["YAQMC examples"],
+  "homepage": "https://github.com/YAQMC/YAQMC",
+  "repository": "https://github.com/YAQMC/YAQMC",
+  "license": "MIT",
+  "engines": { "yaqmc": ">=0.1.0" },
+  "platforms": ["windows", "linux", "macos"],
+  "entrypoints": {
+    "script": "dist/main.js"
+  },
+  "permissions": ["track.read", "ui.pages", "ui.navigation", "ui.layout"]
+}

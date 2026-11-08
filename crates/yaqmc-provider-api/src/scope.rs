@@ -72,6 +72,7 @@ impl ProviderScopedOutput for Song {
         } else {
             self.provider = Some(ProviderTrackReference {
                 provider_id: profile.provider_id.clone(),
+                origin_provider_id: None,
                 profile_id: profile.profile_id.clone(),
                 track_id: self.id.clone(),
                 numeric_id: None,

@@ -1599,6 +1599,7 @@ fn validate_recommendation_batch_scope(
             None if expected.profile_id == DEFAULT_PROFILE_ID => {
                 song.provider = Some(crate::ProviderTrackReference {
                     provider_id: expected.provider_id.clone(),
+                    origin_provider_id: None,
                     profile_id: expected.profile_id.clone(),
                     track_id: song.id.clone(),
                     numeric_id: None,
@@ -1763,6 +1764,7 @@ mod tests {
             playback_capability: None,
             provider: profile_id.map(|profile_id| ProviderTrackReference {
                 provider_id: "qqmusic".to_owned(),
+                origin_provider_id: None,
                 profile_id: profile_id.to_owned(),
                 track_id: "same-track".to_owned(),
                 numeric_id: None,

@@ -199,6 +199,10 @@ export class YaqmcClient {
       this.invoke('plugin_update_apply', { request }),
     updateStatus: (operationId?: string) => this.invoke('plugin_update_status', { operationId }),
     cancelUpdate: (operationId: string) => this.invoke('plugin_update_cancel', { operationId }),
+    storeSearch: (request: MethodParams['plugin_store_search']['request']) =>
+      this.invoke('plugin_store_search', { request }),
+    storeReleases: (request: MethodParams['plugin_store_releases']['request']) =>
+      this.invoke('plugin_store_releases', { request }),
     list: () => this.invoke('plugin_list'),
     inspectPath: (path: string) => this.invoke('plugin_inspect_path', { path }),
     install: (request: MethodParams['plugin_install']['request']) =>

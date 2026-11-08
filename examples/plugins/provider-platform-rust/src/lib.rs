@@ -425,7 +425,7 @@ fn prepare_oauth(payload_json: &str) -> Result<Value, String> {
     let state = field(&payload, "state")?;
     Ok(json!({
         "url": format!("{ACCOUNT_ORIGIN}/authorize?state={state}"),
-        "navigationAllowlist": [format!("{ACCOUNT_ORIGIN}/")],
+        "navigationAllowlist": [format!("{ACCOUNT_ORIGIN}/**")],
         "callbackMatcher": { "urlPrefix": format!("{ACCOUNT_ORIGIN}/callback") }
     }))
 }

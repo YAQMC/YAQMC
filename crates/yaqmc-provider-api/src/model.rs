@@ -37,6 +37,10 @@ pub struct AlbumSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderTrackReference {
     pub provider_id: String,
+    /// Original catalog member when the host wraps a song in a federation.
+    /// Display metadata only; playback continues to use provider_id/track_id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_provider_id: Option<String>,
     #[serde(default = "crate::profile::default_profile_id")]
     pub profile_id: String,
     pub track_id: String,
@@ -162,6 +166,7 @@ pub struct LyricLine {
 #[serde(rename_all = "camelCase")]
 pub struct LyricMetadata {
     pub source_label: String,
+    /// BCP 47 tag of the sung language when the provider knows it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

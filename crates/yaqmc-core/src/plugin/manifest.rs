@@ -6,7 +6,7 @@ use crate::plugin::permissions::{parse_permission, permission_allowed_for_api, P
 
 pub const LEGACY_MANIFEST_VERSION: u32 = 1;
 pub const CURRENT_MANIFEST_VERSION: u32 = 2;
-pub const CURRENT_API_VERSION: u32 = 3;
+pub const CURRENT_API_VERSION: u32 = 4;
 pub const MIN_API_VERSION: u32 = 1;
 pub const PROVIDER_WIT_VERSION: &str = "0.1.0";
 pub const PROVIDER_WIT_WORLD: &str = "provider";
@@ -50,6 +50,9 @@ pub struct PluginManifest {
     pub providers: Vec<ProviderPluginManifest>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub federations: Vec<FederationPluginManifest>,
+    /// Declarative UI contributions; platform-specific rules belong to plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub song_badges: Vec<SongBadgeDeclaration>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
     #[serde(default, skip_serializing_if = "indexmap_empty")]
@@ -65,6 +68,58 @@ pub struct PluginManifest {
 
 fn indexmap_empty(map: &std::collections::BTreeMap<String, String>) -> bool {
     map.is_empty()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SongBadgeDeclaration {
+    pub id: String,
+    pub provider_ids: Vec<String>,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+impl SongBadgeDeclaration {
+    fn valid(&self) -> bool {
+        let valid_text = |value: &str| {
+            !value.trim().is_empty()
+                && value.chars().count() <= 48
+                && !value.chars().any(char::is_control)
+        };
+        !self.id.is_empty()
+            && self.id.len() <= 48
+            && self
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            && !self.provider_ids.is_empty()
+            && self.provider_ids.len() <= 16
+            && self.provider_ids.iter().all(|id| {
+                !id.is_empty()
+                    && id.len() <= 128
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+            })
+            && valid_text(&self.label)
+            && self.labels.len() <= 8
+            && self.labels.iter().all(|(locale, label)| {
+                !locale.is_empty()
+                    && locale.len() <= 35
+                    && locale
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                    && valid_text(label)
+            })
+            && self.color.as_ref().is_none_or(|color| {
+                color.len() == 7
+                    && color.starts_with('#')
+                    && color[1..].bytes().all(|b| b.is_ascii_hexdigit())
+            })
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +277,8 @@ pub enum ManifestError {
     MalformedEntrypoint,
     #[error("the provider component declaration is invalid")]
     InvalidProvider,
+    #[error("the plugin song badge declarations are invalid or lack permission")]
+    InvalidSongBadges,
     #[error("the plugin requests an unknown or forbidden permission")]
     UnknownPermission,
 }
@@ -258,14 +315,32 @@ impl PluginManifest {
             return Err(ManifestError::InvalidId);
         }
         validate_entrypoints(&self.entrypoints)?;
-        for permission in &self.permissions {
-            let (permission, _) =
-                parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
-            if !permission_allowed_for_api(permission, self.api_version) {
-                return Err(ManifestError::UnknownPermission);
+        // A newer API may define permissions this host has never heard of. Such packages stay
+        // installed-but-incompatible via `compatibility_issue`, which also refuses activation,
+        // instead of failing install as if the permission were malformed.
+        if api_supported(self.api_version) {
+            for permission in &self.permissions {
+                let (permission, _) =
+                    parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
+                if !permission_allowed_for_api(permission, self.api_version) {
+                    return Err(ManifestError::UnknownPermission);
+                }
             }
         }
         self.validate_runtime_shape()?;
+        let mut badge_ids = BTreeSet::new();
+        if self.song_badges.len() > 16
+            || (!self.song_badges.is_empty()
+                && !self
+                    .requested_permissions()
+                    .contains(&PluginPermission::UiSongBadges))
+            || self
+                .song_badges
+                .iter()
+                .any(|badge| !badge.valid() || !badge_ids.insert(&badge.id))
+        {
+            return Err(ManifestError::InvalidSongBadges);
+        }
         for (dependency, range) in &self.dependencies {
             if !is_plugin_id(dependency) || range.trim().is_empty() {
                 return Err(ManifestError::InvalidId);
@@ -558,6 +633,9 @@ pub fn current_platform() -> &'static str {
         "linux"
     } else if cfg!(target_os = "macos") {
         "macos"
+    } else if cfg!(target_os = "android") {
+        // Android is `target_os = "android"`, never `linux`; unknown targets stay incompatible.
+        "android"
     } else {
         "unknown"
     }
@@ -566,6 +644,39 @@ pub fn current_platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn song_badges_require_permission_and_bounded_plain_text_declarations() {
+        let mut value: serde_json::Value = serde_json::from_str(&valid_provider_json()).unwrap();
+        let badge = serde_json::json!({
+            "id": "catalog", "providerIds": ["provider.example"],
+            "label": "Example", "labels": {"zh-CN": "示例"}, "color": "#123abc"
+        });
+        value["songBadges"] = serde_json::json!([badge]);
+        assert!(PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_err());
+        value["permissions"]
+            .as_array_mut()
+            .unwrap()
+            .push("ui.songBadges".into());
+        assert!(PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_ok());
+        for invalid in [
+            serde_json::json!({"color": "url(https://invalid.test)"}),
+            serde_json::json!({"label": "bad\nlabel"}),
+            serde_json::json!({"label": "x".repeat(49)}),
+            serde_json::json!({"providerIds": []}),
+            serde_json::json!({"providerIds": ["*"]}),
+            serde_json::json!({"labels": {"en-US": ""}}),
+        ] {
+            let mut changed = value.clone();
+            changed["songBadges"][0]
+                .as_object_mut()
+                .unwrap()
+                .extend(invalid.as_object().unwrap().clone());
+            assert!(PluginManifest::parse(&serde_json::to_vec(&changed).unwrap()).is_err());
+        }
+        value["songBadges"] = serde_json::json!([badge.clone(), badge]);
+        assert!(PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_err());
+    }
 
     fn valid_json() -> String {
         r#"{
@@ -643,6 +754,96 @@ mod tests {
         assert_eq!(
             PluginManifest::parse(json.as_bytes()).unwrap_err(),
             ManifestError::MalformedEntrypoint
+        );
+    }
+
+    #[test]
+    fn api_v4_is_compositional_and_gates_page_permissions_by_version() {
+        let v4 = valid_json()
+            .replace("\"apiVersion\": 1", "\"apiVersion\": 4")
+            .replace(
+                r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+                r#""entrypoints": { "script": "dist/main.js" },
+                   "permissions": ["track.read", "ui.sidebar", "ui.pages", "ui.navigation", "ui.layout"]"#,
+            );
+        let manifest = PluginManifest::parse(v4.as_bytes()).expect("v4 compositional manifest");
+        assert!(manifest.compatibility_issue().is_none());
+        assert!(manifest
+            .requested_permissions()
+            .contains(&PluginPermission::UiPages));
+
+        let v2_pages = v4.replace("\"apiVersion\": 4", "\"apiVersion\": 2");
+        assert_eq!(
+            PluginManifest::parse(v2_pages.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
+        );
+
+        // A Provider Component cannot move to v4: its provider.* permissions are v3-only...
+        let provider_v4 = valid_provider_json().replace("\"apiVersion\": 3", "\"apiVersion\": 4");
+        assert_eq!(
+            PluginManifest::parse(provider_v4.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
+        );
+        // ...and even without them the manifest v2 component shape requires API v3.
+        let bare_provider_v4 = provider_v4.replace(
+            r#""permissions": ["provider.catalog"]"#,
+            r#""permissions": []"#,
+        );
+        assert_eq!(
+            PluginManifest::parse(bare_provider_v4.as_bytes()).unwrap_err(),
+            ManifestError::ManifestApiMismatch
+        );
+    }
+
+    #[test]
+    fn platform_list_matches_only_the_current_target() {
+        let current = current_platform();
+        assert_ne!(current, "unknown", "every shipped target has a platform id");
+        let with = |platforms: &str| {
+            valid_json().replace(
+                "\"apiVersion\": 1",
+                &format!("\"apiVersion\": 1, \"platforms\": [{platforms}]"),
+            )
+        };
+        let own = PluginManifest::parse(with(&format!("\"{current}\"")).as_bytes()).unwrap();
+        assert!(own.compatibility_issue().is_none());
+        // `unknown` is never treated as a wildcard and desktop ids never match Android.
+        let other = if current == "android" {
+            "\"linux\", \"unknown\""
+        } else {
+            "\"android\", \"unknown\""
+        };
+        let foreign = PluginManifest::parse(with(other).as_bytes()).unwrap();
+        assert_eq!(
+            foreign.compatibility_issue(),
+            Some(format!("this plugin does not support {current}"))
+        );
+    }
+
+    #[test]
+    fn future_api_permissions_install_as_incompatible_instead_of_malformed() {
+        let future = valid_json()
+            .replace("\"apiVersion\": 1", "\"apiVersion\": 5")
+            .replace(
+                r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+                r#""entrypoints": { "script": "dist/main.js" },
+                   "permissions": ["ui.pages", "ui.someFutureSlot"]"#,
+            );
+        let manifest = PluginManifest::parse(future.as_bytes()).expect("structurally valid");
+        assert_eq!(
+            manifest.compatibility_issue().as_deref(),
+            Some("this plugin API version is not supported")
+        );
+        let zero = valid_json().replace("\"apiVersion\": 1", "\"apiVersion\": 0");
+        assert!(PluginManifest::parse(zero.as_bytes())
+            .expect("structurally valid")
+            .compatibility_issue()
+            .is_some());
+        // A supported API still rejects permissions it does not define.
+        let unknown = future.replace("\"apiVersion\": 5", "\"apiVersion\": 4");
+        assert_eq!(
+            PluginManifest::parse(unknown.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
         );
     }
 

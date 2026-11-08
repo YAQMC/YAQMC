@@ -22,6 +22,11 @@ const plugins = [
     source: 'examples/plugins/script-network/src/main.ts',
     out: 'examples/plugins/script-network/dist/main.js',
   },
+  {
+    id: 'script-pages',
+    source: 'examples/plugins/script-pages/src/main.ts',
+    out: 'examples/plugins/script-pages/dist/main.js',
+  },
 ];
 
 function stripImports(source) {

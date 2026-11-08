@@ -42,7 +42,7 @@
     }
   },
   "core_shutdown_cancel": {
-    "id": 116,
+    "id": 118,
     "kind": "response",
     "ok": true,
     "result": null
@@ -77,7 +77,7 @@
     "ok": false
   },
   "host_updater_cancel": {
-    "id": 114,
+    "id": 116,
     "kind": "response",
     "ok": true,
     "result": {
@@ -92,36 +92,6 @@
     }
   },
   "host_updater_check": {
-    "id": 109,
-    "kind": "response",
-    "ok": true,
-    "result": {
-      "allowPrerelease": false,
-      "buildSource": "source",
-      "canInstall": false,
-      "channel": "latest",
-      "currentVersion": "0.1.1",
-      "installDisabledReason": "non-release-build",
-      "packageKind": "managed",
-      "state": "idle"
-    }
-  },
-  "host_updater_download": {
-    "id": 110,
-    "kind": "response",
-    "ok": true,
-    "result": {
-      "allowPrerelease": false,
-      "buildSource": "source",
-      "canInstall": false,
-      "channel": "latest",
-      "currentVersion": "0.1.1",
-      "installDisabledReason": "non-release-build",
-      "packageKind": "managed",
-      "state": "idle"
-    }
-  },
-  "host_updater_install": {
     "id": 111,
     "kind": "response",
     "ok": true,
@@ -136,8 +106,8 @@
       "state": "idle"
     }
   },
-  "host_updater_preferences": {
-    "id": 115,
+  "host_updater_download": {
+    "id": 112,
     "kind": "response",
     "ok": true,
     "result": {
@@ -151,7 +121,7 @@
       "state": "idle"
     }
   },
-  "host_updater_start": {
+  "host_updater_install": {
     "id": 113,
     "kind": "response",
     "ok": true,
@@ -166,8 +136,38 @@
       "state": "idle"
     }
   },
+  "host_updater_preferences": {
+    "id": 117,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "allowPrerelease": false,
+      "buildSource": "source",
+      "canInstall": false,
+      "channel": "latest",
+      "currentVersion": "0.1.1",
+      "installDisabledReason": "non-release-build",
+      "packageKind": "managed",
+      "state": "idle"
+    }
+  },
+  "host_updater_start": {
+    "id": 115,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "allowPrerelease": false,
+      "buildSource": "source",
+      "canInstall": false,
+      "channel": "latest",
+      "currentVersion": "0.1.1",
+      "installDisabledReason": "non-release-build",
+      "packageKind": "managed",
+      "state": "idle"
+    }
+  },
   "host_updater_status": {
-    "id": 112,
+    "id": 114,
     "kind": "response",
     "ok": true,
     "result": {
@@ -270,6 +270,78 @@
       "volume": 0.72
     }
   },
+  "plugin_store_releases": {
+    "id": 110,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "fetchedAtMs": 1,
+      "hasMore": false,
+      "hiddenPrereleases": 0,
+      "owner": "YAQMC",
+      "page": 1,
+      "releases": [
+        {
+          "assets": [
+            {
+              "downloadCount": 0,
+              "id": 70,
+              "name": "org.yaqmc.providers.music-0.2.0.yaqmc-plugin",
+              "sha256": null,
+              "size": 1024,
+              "updatedAt": null
+            }
+          ],
+          "body": null,
+          "htmlUrl": "https://github.com/YAQMC/yaqmc-music-providers/releases",
+          "id": 7,
+          "name": "0.2.0",
+          "otherAssetCount": 1,
+          "prerelease": false,
+          "publishedAt": "2026-11-02T00:00:00Z",
+          "tagName": "v0.2.0"
+        }
+      ],
+      "repo": "yaqmc-music-providers",
+      "stale": false
+    }
+  },
+  "plugin_store_search": {
+    "id": 109,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "fetchedAtMs": 1,
+      "hasMore": false,
+      "incompleteResults": false,
+      "items": [
+        {
+          "archived": false,
+          "description": "Music provider plugin",
+          "fork": false,
+          "fullName": "YAQMC/yaqmc-music-providers",
+          "htmlUrl": "https://github.com/YAQMC/yaqmc-music-providers",
+          "id": 1,
+          "license": "MIT",
+          "organizationOwned": true,
+          "owner": "YAQMC",
+          "ownerAvatarUrl": null,
+          "ownerType": "Organization",
+          "pushedAt": null,
+          "repo": "yaqmc-music-providers",
+          "stars": 1,
+          "topics": [
+            "yaqmc-plugin"
+          ],
+          "updatedAt": "2026-11-01T00:00:00Z"
+        }
+      ],
+      "page": 1,
+      "query": "topic:yaqmc-plugin lyrics",
+      "stale": false,
+      "totalCount": 1
+    }
+  },
   "plugin_update_apply": {
     "id": 104,
     "kind": "response",
@@ -296,6 +368,7 @@
         "hasScript": true,
         "name": "Example",
         "needsRenderer": true,
+        "origin": null,
         "permissions": [
           "plugin.storage"
         ],
@@ -350,6 +423,7 @@
         "hasScript": true,
         "name": "Example",
         "needsRenderer": true,
+        "origin": null,
         "permissions": [
           "plugin.storage"
         ],
@@ -452,6 +526,7 @@
         "hasScript": true,
         "name": "Example",
         "needsRenderer": true,
+        "origin": null,
         "permissions": [
           "plugin.storage"
         ],
@@ -507,6 +582,7 @@
           "hasScript": true,
           "name": "Example",
           "needsRenderer": true,
+          "origin": null,
           "permissions": [
             "plugin.storage"
           ],

@@ -688,6 +688,7 @@ mod share_tests {
             playback_capability: None,
             provider: Some(api::ProviderTrackReference {
                 provider_id: "qqmusic".to_owned(),
+                origin_provider_id: None,
                 profile_id: api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: track_id.to_owned(),
                 numeric_id: None,
