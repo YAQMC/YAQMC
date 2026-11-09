@@ -3,11 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import {
-  resolveAndroidJava,
-  resolveAndroidToolchain,
-  resolveRustlsVerifierMaven,
-} from './build-android.mjs';
+import { resolveAndroidJava, resolveAndroidToolchain } from './build-android.mjs';
 import { rootVersion } from './ci/android-version.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,7 +31,6 @@ const environment = {
   YAQMC_VERSION_NAME: version.versionName,
   YAQMC_VERSION_CODE: String(version.versionCode),
   YAQMC_BUILD_COMMIT: commit,
-  YAQMC_RUSTLS_VERIFIER_MAVEN_DIR: resolveRustlsVerifierMaven(),
 };
 const wrapperJar = path.join(androidRoot, 'gradle', 'wrapper', 'gradle-wrapper.jar');
 const result = spawnSync(

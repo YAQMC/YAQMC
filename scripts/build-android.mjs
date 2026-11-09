@@ -161,34 +161,6 @@ export function cargoNdkArguments(variant, outputDirectory = nativeOutput) {
   return args;
 }
 
-export function rustlsVerifierMavenFromMetadata(metadata) {
-  const verifier = metadata?.packages?.find(
-    (candidate) => candidate.name === 'rustls-platform-verifier-android',
-  );
-  if (!verifier?.manifest_path) {
-    throw new Error('rustls-platform-verifier-android is missing from Cargo metadata');
-  }
-  const repository = path.join(path.dirname(verifier.manifest_path), 'maven');
-  if (!existsSync(repository)) {
-    throw new Error(`rustls Android Maven repository is missing: ${repository}`);
-  }
-  return repository;
-}
-
-export function resolveRustlsVerifierMaven(environment = process.env) {
-  const result = spawnSync('cargo', ['metadata', '--format-version', '1', '--locked'], {
-    cwd: repositoryRoot,
-    env: environment,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error('cargo metadata failed while locating the Android TLS verifier');
-  }
-  return rustlsVerifierMavenFromMetadata(JSON.parse(result.stdout));
-}
-
 export function gradleTask(variant) {
   return variant === 'release' ? ':app:assembleRelease' : ':app:assembleDebug';
 }
@@ -309,7 +281,6 @@ export function buildAndroid(argv = process.argv.slice(2), environment = process
   }
 
   const toolchain = resolveAndroidToolchain(environment);
-  const rustlsVerifierMaven = resolveRustlsVerifierMaven(environment);
   const commitResult = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
     cwd: repositoryRoot,
     encoding: 'utf8',
@@ -327,7 +298,6 @@ export function buildAndroid(argv = process.argv.slice(2), environment = process
     YAQMC_VERSION_NAME: version.versionName,
     YAQMC_VERSION_CODE: String(version.versionCode),
     YAQMC_BUILD_COMMIT: commitResult.stdout.trim(),
-    YAQMC_RUSTLS_VERIFIER_MAVEN_DIR: rustlsVerifierMaven,
   };
 
   if (options.buildWeb) buildWeb(buildEnvironment, options.qaBuild);

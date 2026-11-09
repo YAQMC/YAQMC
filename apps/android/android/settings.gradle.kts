@@ -74,13 +74,11 @@ val capacitorApp = requireNotNull(
 include(":capacitor-app")
 project(":capacitor-app").projectDir = capacitorApp
 
-val rustlsVerifierMaven = System.getenv("YAQMC_RUSTLS_VERIFIER_MAVEN_DIR")
-require(!rustlsVerifierMaven.isNullOrBlank()) {
-    "YAQMC_RUSTLS_VERIFIER_MAVEN_DIR is required; invoke Gradle through scripts/build-android.mjs"
-}
 dependencyResolutionManagement.repositories.maven {
     name = "rustlsPlatformVerifier"
-    url = uri(rustlsVerifierMaven)
+    // Pin the upstream Maven archive; the AAR includes scoped CRL network permissions.
+    url = uri("https://raw.githubusercontent.com/rustls/rustls-platform-verifier/1aa691352a5e0c215210dfc9a3c2f2078639dc91/android-release-support/maven/")
+    content { includeGroup("org.rustls") }
 }
 
 // Capacitor modules are linked explicitly because the generated Groovy settings

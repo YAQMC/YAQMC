@@ -12,6 +12,12 @@ val buildCommit = System.getenv("YAQMC_BUILD_COMMIT")
     ?.takeIf { it.matches(Regex("^[0-9a-f]{40}$")) }
     ?: "unknown"
 
+// Keep the Rust verifier and JVM companion on the same Cargo-locked version.
+val rustlsVerifierVersion = Regex(
+    """(?m)^name = "rustls-platform-verifier-android"\r?\nversion = "([^"]+)"""",
+).find(rootProject.file("../../../Cargo.lock").readText())?.groupValues?.get(1)
+    ?: error("rustls-platform-verifier-android is missing from Cargo.lock")
+
 android {
     namespace = "org.yaqmc.android"
     compileSdk = 36
@@ -98,7 +104,7 @@ dependencies {
     implementation("androidx.media3:media3-common:1.10.1")
     implementation("androidx.media3:media3-session:1.10.1")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
-    implementation("rustls:rustls-platform-verifier:0.1.1")
+    implementation("org.rustls:rustls-platform-verifier:$rustlsVerifierVersion")
     implementation("dev.yaqmc:amll-android:0.1.0-yaqmc.1ed23d4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.2.20")

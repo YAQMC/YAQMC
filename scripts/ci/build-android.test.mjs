@@ -89,3 +89,21 @@ test('Android CI setup uses the JDK required by Capacitor and Gradle', () => {
   assert.match(action, /cmdline-tools\/latest\/bin\/sdkmanager/u);
   assert.doesNotMatch(action, /^\s*yes \| sdkmanager/mu);
 });
+
+test('Android TLS uses the Cargo-locked CRL-capable JVM companion', () => {
+  const read = (name) => readFileSync(path.join(repositoryRoot, name), 'utf8');
+  const lock = read('Cargo.lock');
+  assert.match(lock, /name = "rustls-platform-verifier-android"\r?\nversion = "0\.2\.0"/u);
+  const app = read('apps/android/android/app/build.gradle.kts');
+  assert.match(app, /rootProject\.file\("\.\.\/\.\.\/\.\.\/Cargo\.lock"\)/u);
+  assert.ok(app.includes('org.rustls:rustls-platform-verifier:$rustlsVerifierVersion'));
+  const settings = read('apps/android/android/settings.gradle.kts');
+  assert.match(
+    settings,
+    /https:\/\/raw\.githubusercontent\.com\/rustls\/rustls-platform-verifier\/[a-f0-9]{40}\/android-release-support\/maven\//u,
+  );
+  const manifest = read('apps/android/android/app/src/main/AndroidManifest.xml');
+  assert.match(manifest, /android:usesCleartextTraffic="false"/u);
+  // The AAR must supply its scoped CRL configuration without an app override.
+  assert.doesNotMatch(manifest, /android:networkSecurityConfig/u);
+});
