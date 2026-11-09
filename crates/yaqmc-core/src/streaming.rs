@@ -798,14 +798,19 @@ mod tests {
                             requests: thread_requests,
                             ranges: thread_ranges,
                         });
-                    axum::serve(listener, router)
-                        .with_graceful_shutdown(async move {
+                    // Dropping an unread fallback response may schedule connection cleanup
+                    // on the caller's runtime. Drop joins this thread synchronously, so
+                    // waiting for graceful connection drain here can deadlock that runtime.
+                    tokio::select! {
+                        result = async { axum::serve(listener, router).await } => {
+                            result.expect("test HTTP server");
+                        }
+                        _ = async move {
                             while !thread_stop.load(Ordering::Acquire) {
                                 tokio::time::sleep(Duration::from_millis(2)).await;
                             }
-                        })
-                        .await
-                        .expect("test HTTP server");
+                        } => {}
+                    }
                 });
             });
             Self {
