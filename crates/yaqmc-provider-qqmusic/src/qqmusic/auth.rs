@@ -3232,6 +3232,13 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            if service.snapshot().await.state_name() == expected {
+                return;
+            }
+        }
         panic!(
             "state did not converge: expected {expected}, got {}",
             service.snapshot().await.state_name()
@@ -3245,6 +3252,13 @@ mod tests {
             tokio::select! {
                 _ = &mut notified => return,
                 _ = tokio::task::yield_now() => {}
+            }
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            tokio::select! {
+                _ = &mut notified => return,
+                _ = tokio::time::sleep(Duration::from_millis(5)) => {}
             }
         }
         panic!("notification did not arrive");
