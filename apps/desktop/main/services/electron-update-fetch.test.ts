@@ -9,16 +9,26 @@ function fixture() {
     onErrorOccurred: vi.fn(),
   };
   const fetch = vi.fn(async () => new Response('package'));
-  const adapter = createElectronUpdateFetch({ webRequest: hooks, fetch } as unknown as Session);
+  const getSession = vi.fn(() => ({ webRequest: hooks, fetch }) as unknown as Session);
+  const adapter = createElectronUpdateFetch(getSession);
   const request = (url: string, id = 1) => {
     const callback = vi.fn();
     hooks.onBeforeRequest.mock.calls[0]![1]({ url, id }, callback);
     return callback.mock.calls[0]![0];
   };
-  return { adapter, hooks, fetch, request };
+  return { adapter, hooks, fetch, request, getSession };
 }
 
 describe('Chromium updater transport', () => {
+  it('creates the session only on first use, after Electron startup, and reuses it', async () => {
+    const f = fixture();
+    expect(f.getSession).not.toHaveBeenCalled();
+    expect(f.hooks.onBeforeRequest).not.toHaveBeenCalled();
+    await f.adapter('https://github.com/file');
+    await f.adapter('https://github.com/another-file');
+    expect(f.getSession).toHaveBeenCalledTimes(1);
+    expect(f.hooks.onBeforeRequest).toHaveBeenCalledTimes(1);
+  });
   it('follows redirects in the dedicated session while omitting cookies and retaining cancellation', async () => {
     const f = fixture();
     const signal = new AbortController().signal;

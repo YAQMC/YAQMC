@@ -597,7 +597,7 @@ const updaterHandle = createUpdater({
       : createElectronUpdaterPort({
           currentVersion: app.getVersion(),
           identity: updateIdentity,
-          fetcher: createElectronUpdateFetch(
+          fetcher: createElectronUpdateFetch(() =>
             session.fromPartition('yaqmc-app-updater', { cache: false }),
           ),
           directory: path.join(appUpdateRoot, 'downloads'),

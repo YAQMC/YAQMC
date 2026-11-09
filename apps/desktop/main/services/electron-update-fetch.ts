@@ -2,7 +2,15 @@ import type { Session } from 'electron';
 import { isUpdateUrlAllowed, type UpdateFetch } from './update-io';
 
 /** Chromium fetch rejects manual redirects; enforce the same policy on its network requests. */
-export function createElectronUpdateFetch(updaterSession: Session): UpdateFetch {
+export function createElectronUpdateFetch(getSession: () => Session): UpdateFetch {
+  let fetcher: UpdateFetch | undefined;
+  return (url, init) => {
+    fetcher ??= configureUpdaterSession(getSession());
+    return fetcher(url, init);
+  };
+}
+
+function configureUpdaterSession(updaterSession: Session): UpdateFetch {
   const hops = new Map<number, number>();
   const filter = { urls: ['<all_urls>'] };
   updaterSession.webRequest.onBeforeRequest(filter, (request, callback) => {
