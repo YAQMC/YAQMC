@@ -52,7 +52,7 @@ test('collects canonical requirements and continuity facts from production repos
   });
   assert.deepEqual(facts.runtimeFacts, {
     registeredProtocolMethods: 210,
-    mainWindow: '1280×800 (minimum 1000×680)',
+    mainWindow: '1280×800 (no enforced minimum)',
   });
   assert.deepEqual(
     facts.persistenceEntries.map(({ id, key }) => [id, key]),
@@ -73,6 +73,21 @@ test('collects canonical requirements and continuity facts from production repos
     legacyService: 'dev.music-client.desktop',
     entries: ['qqmusic-session', 'qqmusic-session-staging', 'local-api-bearer-token'],
   });
+});
+
+test('reports explicit main-window limits without reading dimensions from other windows', () => {
+  const root = copyFactRepository();
+  const mainPath = path.join(root, 'apps/desktop/main/index.ts');
+  writeFileSync(
+    mainPath,
+    readFileSync(mainPath, 'utf8').replace(
+      'height: 800,',
+      'height: 800, minWidth: 640, minHeight: 360,',
+    ),
+  );
+  assert.equal(collectRepositoryFacts(root).runtimeFacts.mainWindow, '1280×800 (minimum 640×360)');
+  writeFileSync(mainPath, readFileSync(mainPath, 'utf8').replace('width: 1280,', ''));
+  assert.throws(() => collectRepositoryFacts(root), /main window dimensions must be defined/);
 });
 
 test('rejects a temporary repository whose Node pins disagree', () => {

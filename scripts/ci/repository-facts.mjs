@@ -93,14 +93,21 @@ function collectRuntimeAndPaths(repositoryRoot) {
   }
 
   const main = read(repositoryRoot, 'apps/desktop/main/index.ts');
-  const dimension = (name) => Number(new RegExp(`\\b${name}:\\s*(\\d+)`).exec(main)?.[1]);
+  const mainOptions =
+    /function createMainWindow\([^)]*\)[^{]*\{\s*const window = new BrowserWindow\(\{([\s\S]*?)webPreferences:/.exec(
+      main,
+    )?.[1];
+  const dimension = (name, fallback = NaN) => {
+    const value = new RegExp(`\\b${name}:\\s*(\\d+)`).exec(mainOptions ?? '')?.[1];
+    return value === undefined ? fallback : Number(value);
+  };
   const [width, height, minWidth, minHeight] = [
     dimension('width'),
     dimension('height'),
-    dimension('minWidth'),
-    dimension('minHeight'),
+    dimension('minWidth', 0),
+    dimension('minHeight', 0),
   ];
-  if (![width, height, minWidth, minHeight].every((value) => Number.isFinite(value) && value > 0)) {
+  if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error('Electron main window dimensions must be defined');
   }
 
@@ -111,7 +118,7 @@ function collectRuntimeAndPaths(repositoryRoot) {
   return {
     runtimeFacts: {
       registeredProtocolMethods,
-      mainWindow: `${width}×${height} (minimum ${minWidth}×${minHeight})`,
+      mainWindow: `${width}×${height} (${minWidth || minHeight ? `minimum ${minWidth}×${minHeight}` : 'no enforced minimum'})`,
     },
     dataPaths: [
       {
