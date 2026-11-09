@@ -18,6 +18,11 @@ on:
         required: true
         default: false
         type: boolean
+      artifacts_only:
+        description: Build test packages as Actions artifacts without creating a GitHub Release
+        required: true
+        default: false
+        type: boolean
       private_gates_confirmed:
         description: Confirm that release:check:local passed for this exact commit before requesting release approval
         required: true
@@ -349,6 +354,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
   assemble:
+    if: github.event_name != 'workflow_dispatch' || inputs.artifacts_only != true
     name: Assemble release assets
     needs: [electron-package, android-package]
     runs-on: ubuntu-latest

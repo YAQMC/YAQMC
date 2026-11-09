@@ -153,3 +153,17 @@ test('macOS defaults to ad-hoc packages; opting into signing requires every Appl
     'windows',
   );
 });
+
+test('test packaging skips assembly and cannot create a GitHub Release', () => {
+  const workflow = load(
+    readFileSync(new URL('../../.github/workflows/electron-release.yml', import.meta.url), 'utf8'),
+  );
+  assert.equal(workflow.on.workflow_dispatch.inputs.artifacts_only.default, false);
+  assert.equal(workflow.on.workflow_dispatch.inputs.artifacts_only.type, 'boolean');
+  assert.equal(
+    workflow.jobs.assemble.if,
+    "github.event_name != 'workflow_dispatch' || inputs.artifacts_only != true",
+  );
+  assert.deepEqual(workflow.jobs['github-release-draft'].needs, ['assemble']);
+  assert.equal(workflow.jobs['android-package'].environment, 'release-signing');
+});
