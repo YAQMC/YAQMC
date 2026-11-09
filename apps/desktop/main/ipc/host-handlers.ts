@@ -224,16 +224,21 @@ export function loginProviderFromParams(params: unknown): AccountLoginMethod | u
 
 export function providerOAuthFromParams(
   params: unknown,
-): { providerId: string; methodId: string } | undefined {
+): { providerId: string; methodId: string; profileId?: string } | undefined {
   if (!params || typeof params !== 'object') return undefined;
-  const { providerId, methodId } = params as {
+  const { providerId, methodId, profileId } = params as {
     providerId?: unknown;
     methodId?: unknown;
+    profileId?: unknown;
   };
   const validId = (value: unknown) =>
     typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/u.test(value);
-  return validId(providerId) && validId(methodId)
-    ? { providerId: providerId as string, methodId: methodId as string }
+  return validId(providerId) && validId(methodId) && (profileId === undefined || validId(profileId))
+    ? {
+        providerId: providerId as string,
+        methodId: methodId as string,
+        ...(profileId === undefined ? {} : { profileId: profileId as string }),
+      }
     : undefined;
 }
 
@@ -963,19 +968,26 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       if (!input) {
         throw new Error('provider_auth_oauth_start requires providerId and methodId');
       }
+      const scope = {
+        providerId: input.providerId,
+        ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
+      };
       const authorization = await openProviderOAuthWindow(input, {
         createWindow: oauth.createWindow,
         fromPartition: oauth.fromPartition,
         isPackaged: oauth.isPackaged,
         provider_auth_oauth_prepare: (prepareParams) =>
-          oauth.invoke('provider_auth_oauth_prepare', prepareParams) as Promise<OAuthPrepareResult>,
+          oauth.invoke('provider_auth_oauth_prepare', {
+            ...prepareParams,
+            ...scope,
+          }) as Promise<OAuthPrepareResult>,
         provider_auth_oauth_complete: (completeParams) =>
-          oauth.invoke('provider_auth_oauth_complete', completeParams),
+          oauth.invoke('provider_auth_oauth_complete', { ...completeParams, ...scope }),
         provider_auth_oauth_cancel: (cancelParams) =>
-          oauth.invoke('provider_auth_oauth_cancel', cancelParams),
+          oauth.invoke('provider_auth_oauth_cancel', { ...cancelParams, ...scope }),
       });
       void authorization.completion.catch(() => undefined);
-      return oauth.invoke('provider_account_snapshot', { providerId: input.providerId });
+      return oauth.invoke('provider_account_snapshot', scope);
     };
   }
 

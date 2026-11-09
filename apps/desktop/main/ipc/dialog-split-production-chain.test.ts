@@ -403,51 +403,79 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
 });
 
 describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
-  it('returns WeChat OAuth ownership early enough to renew the real Core lease', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-oauth-lease-'));
-    const chain = await liveProductionChain(root, '', {
-      oauth: {
-        createWindow: () => ({
-          webContents: { on: vi.fn(), setWindowOpenHandler: vi.fn() },
-          loadURL: vi.fn(),
-          close: vi.fn(),
-          on: vi.fn(),
-        }),
-        fromPartition: () => ({}),
-        isPackaged: true,
-        invoke: (method, params) => core.client.invoke(method, params),
-      },
-    });
-    const core = chain.supervisor;
-    try {
-      const started = await chain.router.invoke(1, {
-        method: 'qqmusic_auth_oauth_start',
-        params: { loginProvider: 'wechat' },
+  it.each(['default', 'custom'])(
+    'renews the real Core WeChat OAuth lease for the %s profile',
+    async (profileKind) => {
+      const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-oauth-lease-'));
+      const chain = await liveProductionChain(root, '', {
+        oauth: {
+          createWindow: () => ({
+            webContents: { on: vi.fn(), setWindowOpenHandler: vi.fn() },
+            loadURL: vi.fn(),
+            close: vi.fn(),
+            on: vi.fn(),
+          }),
+          fromPartition: () => ({}),
+          isPackaged: true,
+          invoke: (method, params) => core.client.invoke(method, params),
+        },
       });
-      expect(started.ok).toBe(true);
-      if (!started.ok) throw new Error('OAuth startup failed');
-      const waiting = started.result as { state: string; attemptId: string; ownerLeaseId: string };
-      expect(waiting.state).toBe('waiting-for-confirmation');
-      const params = { attemptId: waiting.attemptId, ownerLeaseId: waiting.ownerLeaseId };
-      for (let tick = 0; tick < 6; tick += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
-        await expect(
-          chain.router.invoke(1, { method: 'qqmusic_auth_heartbeat', params }),
-        ).resolves.toMatchObject({
-          ok: true,
-          result: { state: 'waiting-for-confirmation', ...params },
+      const core = chain.supervisor;
+      try {
+        let scope = { providerId: 'qqmusic', profileId: 'default' };
+        if (profileKind === 'custom') {
+          const created = await chain.router.invoke(1, {
+            method: 'provider_profile_create',
+            params: { providerId: 'qqmusic', label: 'WeChat test' },
+          });
+          if (!created.ok) throw new Error('Cannot create the OAuth test profile');
+          scope = {
+            providerId: 'qqmusic',
+            profileId: (created.result as { profileId: string }).profileId,
+          };
+        }
+        const started = await chain.router.invoke(1, {
+          method:
+            profileKind === 'custom' ? 'provider_auth_oauth_start' : 'qqmusic_auth_oauth_start',
+          params:
+            profileKind === 'custom'
+              ? { ...scope, methodId: 'wechat' }
+              : { loginProvider: 'wechat' },
         });
+        expect(started.ok).toBe(true);
+        if (!started.ok) throw new Error('OAuth startup failed');
+        const waiting = started.result as {
+          state: string;
+          attemptId: string;
+          ownerLeaseId: string;
+        };
+        expect(waiting.state).toBe('waiting-for-confirmation');
+        expect(started.result).toMatchObject(scope);
+        const params = { attemptId: waiting.attemptId, ownerLeaseId: waiting.ownerLeaseId };
+        for (let tick = 0; tick < 6; tick += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          await expect(
+            chain.router.invoke(1, {
+              method: 'provider_auth_heartbeat',
+              params: { ...scope, ...params },
+            }),
+          ).resolves.toMatchObject({
+            ok: true,
+            result: { state: 'waiting-for-confirmation', ...params },
+          });
+        }
+        await expect(
+          chain.router.invoke(1, {
+            method: 'provider_auth_cancel',
+            params: { ...scope, attemptId: waiting.attemptId },
+          }),
+        ).resolves.toMatchObject({ ok: true, result: { state: 'cancelled' } });
+      } finally {
+        await core.stop();
       }
-      await expect(
-        chain.router.invoke(1, {
-          method: 'qqmusic_auth_cancel',
-          params: { attemptId: waiting.attemptId },
-        }),
-      ).resolves.toMatchObject({ ok: true, result: { state: 'cancelled' } });
-    } finally {
-      await core.stop();
-    }
-  }, 25_000);
+    },
+    25_000,
+  );
 
   it('main-renderer Diagnostics Export reaches Core as main and creates a ZIP', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-dialog-split-zip-'));
