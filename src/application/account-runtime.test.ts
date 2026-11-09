@@ -667,6 +667,51 @@ describe('account runtime', () => {
     });
   });
 
+  it('keeps a browser OAuth attempt alive past the owner lease and observes completion', async () => {
+    vi.useFakeTimers();
+    coreStatusMocks.kind = 'electron';
+    const waiting: AccountSnapshot = {
+      state: 'waiting-for-confirmation',
+      profileId: 'default',
+      attemptId: 'attempt-a',
+      ownerLeaseId: 'lease-a',
+      expiresAtMs: Date.now() + 60_000,
+      pollAfterMs: 2_000,
+      profile: null,
+      entitlement: null,
+      revision: 2,
+      capabilities,
+    };
+    const getAccountSnapshot = vi.fn().mockResolvedValue(guestSnapshot());
+    const heartbeatQrLogin = vi.fn().mockResolvedValue(waiting);
+    const provider = accountProvider({
+      getAccountSnapshot,
+      heartbeatQrLogin,
+      startWebLogin: vi.fn().mockResolvedValue(waiting),
+    });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+    await act(async () => Promise.resolve());
+    getAccountSnapshot.mockResolvedValue(waiting);
+    await act(async () => useAccountStore.getState().startLogin(provider, 'wechat'));
+    expect(useAccountStore.getState()).toMatchObject({ busy: false, snapshot: waiting });
+
+    await act(async () => vi.advanceTimersByTimeAsync(12_000));
+    expect(heartbeatQrLogin.mock.calls.length).toBeGreaterThanOrEqual(5);
+    expect(heartbeatQrLogin).toHaveBeenCalledWith('attempt-a', 'lease-a', expect.any(AbortSignal));
+    expect(provider.cancelQrLogin).not.toHaveBeenCalled();
+
+    getAccountSnapshot.mockResolvedValue(authenticatedSnapshot(3));
+    await act(async () => {
+      coreStatusMocks.emitAccount(true);
+      await Promise.resolve();
+    });
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+    const heartbeats = heartbeatQrLogin.mock.calls.length;
+    await act(async () => vi.advanceTimersByTimeAsync(4_000));
+    expect(heartbeatQrLogin).toHaveBeenCalledTimes(heartbeats);
+    unmount();
+  });
+
   it('heartbeats the exact owner pair and preserves the QR after rejection', async () => {
     vi.useFakeTimers();
     const heartbeatQrLogin = vi.fn().mockRejectedValue(new Error('private native detail'));

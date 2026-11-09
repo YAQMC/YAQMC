@@ -952,7 +952,11 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
           oauth.invoke('auth_oauth_complete', completeParams),
         auth_oauth_cancel: (cancelParams) => oauth.invoke('auth_oauth_cancel', cancelParams),
       });
-      return authorization.completion;
+      // Return the owned waiting snapshot now so the renderer can heartbeat it.
+      // Waiting for the popup here keeps the renderer busy until its lease expires.
+      // Completion (including failure/cancellation) is published through account events.
+      void authorization.completion.catch(() => undefined);
+      return oauth.invoke('qqmusic_account_snapshot');
     };
     handlers.provider_auth_oauth_start = async (params) => {
       const input = providerOAuthFromParams(params);
@@ -970,7 +974,8 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         provider_auth_oauth_cancel: (cancelParams) =>
           oauth.invoke('provider_auth_oauth_cancel', cancelParams),
       });
-      return authorization.completion;
+      void authorization.completion.catch(() => undefined);
+      return oauth.invoke('provider_account_snapshot', { providerId: input.providerId });
     };
   }
 

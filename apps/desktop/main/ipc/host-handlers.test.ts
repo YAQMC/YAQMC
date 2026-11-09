@@ -879,7 +879,7 @@ describe('IpcRouter host intercepts', () => {
       if (method === 'auth_oauth_prepare') {
         return prepared;
       }
-      if (method === 'auth_oauth_complete') {
+      if (method === 'auth_oauth_complete' || method === 'qqmusic_account_snapshot') {
         return snapshot;
       }
       return { ok: true };
@@ -910,6 +910,11 @@ describe('IpcRouter host intercepts', () => {
       params: { loginProvider: 'qq' },
     });
     await vi.waitFor(() => expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url));
+    // Startup must resolve before any callback, otherwise the renderer cannot
+    // obtain the owner lease or heartbeat while the user scans the QR code.
+    await expect(authorization).resolves.toEqual({ ok: true, result: snapshot });
+    expect(invoke).toHaveBeenCalledWith('qqmusic_account_snapshot');
+    expect(invoke).not.toHaveBeenCalledWith('auth_oauth_complete', expect.anything());
     const callbackUrl = `${prepared.callbackMatcher.urlPrefix}?code=authorized`;
     navigate?.({ preventDefault: vi.fn() }, callbackUrl);
     await expect(authorization).resolves.toEqual({ ok: true, result: snapshot });
@@ -985,7 +990,8 @@ describe('IpcRouter host intercepts', () => {
     }));
     const invoke = vi.fn<OAuthHostDeps['invoke']>(async (method) => {
       if (method === 'provider_auth_oauth_prepare') return prepared;
-      if (method === 'provider_auth_oauth_complete') return snapshot;
+      if (method === 'provider_auth_oauth_complete' || method === 'provider_account_snapshot')
+        return snapshot;
       return { ok: true };
     });
     const handlers = createHostHandlers({
@@ -1005,6 +1011,11 @@ describe('IpcRouter host intercepts', () => {
       params: { providerId: 'plugin.example', methodId: 'browser-oauth' },
     });
     await vi.waitFor(() => expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url));
+    await expect(authorization).resolves.toEqual({ ok: true, result: snapshot });
+    expect(invoke).toHaveBeenCalledWith('provider_account_snapshot', {
+      providerId: 'plugin.example',
+    });
+    expect(invoke).not.toHaveBeenCalledWith('provider_auth_oauth_complete', expect.anything());
     const callbackUrl = `${prepared.callbackMatcher.urlPrefix}&code=authorized`;
     navigate?.({ preventDefault: vi.fn() }, callbackUrl);
     await expect(authorization).resolves.toEqual({ ok: true, result: snapshot });
