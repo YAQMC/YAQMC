@@ -209,7 +209,13 @@ export function stageElectronArtifacts({
 }
 
 export function packagingEnvironment(env = process.env) {
-  return stripQaLaunchFlags(env);
+  const sanitized = stripQaLaunchFlags(env);
+  // Actions supplies empty strings for optional signing secrets. electron-builder
+  // treats an empty CSC_LINK as a path relative to the project directory.
+  for (const key of [...WINDOWS_SIGNING_ENV_KEYS, ...MACOS_SIGNING_ENV_KEYS]) {
+    if (typeof sanitized[key] === 'string' && !sanitized[key].trim()) delete sanitized[key];
+  }
+  return sanitized;
 }
 
 export function packagingBuildEnvironment(env = process.env) {

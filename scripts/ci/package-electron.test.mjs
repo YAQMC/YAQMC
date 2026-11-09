@@ -83,6 +83,26 @@ test('compile steps cannot inherit Windows signing credentials', () => {
   assert.equal(env.WIN_CSC_KEY_PASSWORD, undefined);
 });
 
+test('optional empty signing inputs do not become certificate paths during packaging', () => {
+  const inputs = {
+    PATH: 'toolchain',
+    CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+    CSC_LINK: '',
+    CSC_KEY_PASSWORD: ' ',
+    APPLE_API_KEY: '',
+    APPLE_API_KEY_ID: '',
+    APPLE_API_ISSUER: '',
+    WIN_CSC_LINK: '',
+    WIN_CSC_KEY_PASSWORD: '',
+  };
+  assert.deepEqual(packagingEnvironment(inputs), {
+    PATH: 'toolchain',
+    CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+  });
+  assert.equal(inputs.CSC_LINK, '');
+  assert.equal(packagingEnvironment({ CSC_LINK: 'developer-id.p12' }).CSC_LINK, 'developer-id.p12');
+});
+
 test('Windows arm64 is treated as a core cross-compile', () => {
   assert.equal(isElectronCoreCross({ os: 'windows', arch: 'arm64' }), true);
   assert.equal(isElectronCoreCross({ os: 'windows', arch: 'x64' }), false);
