@@ -53,8 +53,9 @@ test('release notes retain both languages, signing constraints, and the requeste
   assert.match(notes, /^## English$/mu);
   assert.match(notes, /相同的签名证书/u);
   assert.match(notes, /same signing certificate/u);
-  assert.match(notes, /Android v1 不包含桌面悬浮歌词、插件/u);
-  assert.match(notes, /does not include desktop lyric overlays, plugins/u);
+  assert.match(notes, /插件管理、插件商店/u);
+  assert.match(notes, /Includes plugin management, the plugin store/u);
+  assert.match(notes, /loopback Local API/u);
   assert.throws(() => androidReleaseNotes('not-a-version'));
 });
 

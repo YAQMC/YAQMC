@@ -21,7 +21,9 @@ export function androidReleaseNotes(version) {
 - 系统要求：Android 8.0（API ${ANDROID_MIN_SDK}）或更新版本。
 - APK 通过 GitHub Releases 分发；后续覆盖升级必须使用相同的签名证书。
 - 安装前请用 \`SHA256SUMS-android.txt\` 校验下载文件。
-- Android v1 不包含桌面悬浮歌词、插件和回环 Local API。
+- 支持插件管理、插件商店及 arm64-v8a WebAssembly 音源插件；平台支持以插件清单为准。
+- 支持需授权的悬浮歌词与可选车载蓝牙歌词；系统灵动岛／流体云在未提供兼容适配时不可用。
+- Android 不提供桌面托盘、全局快捷键、回环 Local API 或从文件夹加载未打包插件。
 
 ## English
 
@@ -30,7 +32,9 @@ export function androidReleaseNotes(version) {
 - Requires Android 8.0 (API ${ANDROID_MIN_SDK}) or newer.
 - This APK is distributed through GitHub Releases and must retain the same signing certificate for upgrades.
 - Verify the download with \`SHA256SUMS-android.txt\` before sideloading.
-- Android v1 does not include desktop lyric overlays, plugins, or the loopback Local API.
+- Includes plugin management, the plugin store, and arm64-v8a WebAssembly provider plugins; platform compatibility follows each plugin manifest.
+- Supports permission-controlled floating lyrics and optional car Bluetooth lyrics. System island / Fluid Cloud requires a compatible integration and is unavailable without one.
+- Android does not provide desktop tray controls, global shortcuts, the loopback Local API, or loading unpacked plugin folders.
 `;
 }
 
