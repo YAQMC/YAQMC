@@ -445,7 +445,7 @@ describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
         }),
       ).resolves.toMatchObject({ ok: true, result: { state: 'cancelled' } });
     } finally {
-      await core.shutdown();
+      await core.stop();
     }
   }, 25_000);
 
