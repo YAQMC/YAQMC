@@ -195,7 +195,11 @@ function tapSerializedRequests(client: CoreClient): CoreRequestFrame[] {
   return frames;
 }
 
-async function liveProductionChain(root: string, openPath: string) {
+async function liveProductionChain(
+  root: string,
+  openPath: string,
+  extraHostDeps: Partial<HostHandlerDeps> = {},
+) {
   const savePath = path.join(root, 'YAQMC-diagnostics.zip');
   const supervisor = new CoreSupervisor({
     binary: liveBinary as string,
@@ -225,6 +229,7 @@ async function liveProductionChain(root: string, openPath: string) {
       dataDir: () => path.join(root, 'data'),
       coreInvoke: (method, params, origin) => supervisor.client.invoke(method, params, origin),
       collectHostPayload: () => HOST_PAYLOAD,
+      ...extraHostDeps,
     }),
   });
   router.registerWindow(1, 'main');
@@ -398,6 +403,52 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
 });
 
 describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
+  it('returns WeChat OAuth ownership early enough to renew the real Core lease', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-oauth-lease-'));
+    const chain = await liveProductionChain(root, '', {
+      oauth: {
+        createWindow: () => ({
+          webContents: { on: vi.fn(), setWindowOpenHandler: vi.fn() },
+          loadURL: vi.fn(),
+          close: vi.fn(),
+          on: vi.fn(),
+        }),
+        fromPartition: () => ({}),
+        isPackaged: true,
+        invoke: (method, params) => core.client.invoke(method, params),
+      },
+    });
+    const core = chain.supervisor;
+    try {
+      const started = await chain.router.invoke(1, {
+        method: 'qqmusic_auth_oauth_start',
+        params: { loginProvider: 'wechat' },
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) throw new Error('OAuth startup failed');
+      const waiting = started.result as { state: string; attemptId: string; ownerLeaseId: string };
+      expect(waiting.state).toBe('waiting-for-confirmation');
+      const params = { attemptId: waiting.attemptId, ownerLeaseId: waiting.ownerLeaseId };
+      for (let tick = 0; tick < 6; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        await expect(
+          chain.router.invoke(1, { method: 'qqmusic_auth_heartbeat', params }),
+        ).resolves.toMatchObject({
+          ok: true,
+          result: { state: 'waiting-for-confirmation', ...params },
+        });
+      }
+      await expect(
+        chain.router.invoke(1, {
+          method: 'qqmusic_auth_cancel',
+          params: { attemptId: waiting.attemptId },
+        }),
+      ).resolves.toMatchObject({ ok: true, result: { state: 'cancelled' } });
+    } finally {
+      await core.shutdown();
+    }
+  }, 25_000);
+
   it('main-renderer Diagnostics Export reaches Core as main and creates a ZIP', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-dialog-split-zip-'));
     const chain = await liveProductionChain(root, path.join(root, 'unused.png'));
