@@ -1,6 +1,6 @@
 {
   "name": "@yaqmc/desktop",
-  "version": "0.1.2",
+  "version": "0.1.3-beta.1",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
