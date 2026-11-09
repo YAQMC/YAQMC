@@ -56,7 +56,22 @@ impl Fixture {
             .path()
             .join(format!("Custom YAQMC{}", std::env::consts::EXE_SUFFIX));
         fs::copy(&old, &target).unwrap();
-        let parent = Command::new(&target).arg("--wait").spawn().unwrap();
+        // Linux CI can briefly report ETXTBSY for a just-copied executable.
+        // Retry only fixture startup; updater operations and assertions still run once.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let parent = loop {
+            match Command::new(&target).arg("--wait").spawn() {
+                Ok(child) => break child,
+                Err(error)
+                    if cfg!(target_os = "linux")
+                        && error.raw_os_error() == Some(26)
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("failed to start fixture {}: {error}", target.display()),
+            }
+        };
         let old_hash = hash(&target);
         let tx = json!({"operationId":"a".repeat(32),"token":"b".repeat(64),"parentPid":parent.id(),"launcherPid":parent.id(),
             "target":target,"package":candidate,"oldSha256":old_hash,"sha256":hash(&candidate),
