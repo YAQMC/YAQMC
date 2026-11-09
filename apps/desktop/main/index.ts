@@ -68,6 +68,7 @@ import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphic
 import { mergeChromiumFeatureList, windowsOcclusionSwitches } from './windows/windows-occlusion';
 import { OVERLAY_VISUAL_DOCUMENT_GUARD } from './windows/surface-visual-document';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
+import { createElectronUpdateFetch } from './services/electron-update-fetch';
 import { createUpdater, type UpdaterHandle } from './services/updater';
 import { packageKind, type BuildIdentity } from './services/release-catalog';
 import { readUpdatePreferences, writeUpdatePreferences } from './services/update-preferences';
@@ -596,8 +597,9 @@ const updaterHandle = createUpdater({
       : createElectronUpdaterPort({
           currentVersion: app.getVersion(),
           identity: updateIdentity,
-          fetcher: (url, init) =>
-            session.fromPartition('yaqmc-app-updater', { cache: false }).fetch(url, init),
+          fetcher: createElectronUpdateFetch(
+            session.fromPartition('yaqmc-app-updater', { cache: false }),
+          ),
           directory: path.join(appUpdateRoot, 'downloads'),
           beforeNsisInstall: (candidate) =>
             atomicUpdateJson(path.join(appUpdateRoot, 'nsis-pending.json'), {
