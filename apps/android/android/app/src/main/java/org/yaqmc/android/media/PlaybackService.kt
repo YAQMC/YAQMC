@@ -68,6 +68,9 @@ class PlaybackService : MediaSessionService() {
             onStopRequested = ::stopAfterCore,
         )
         session = MediaSession.Builder(this, player!!).setId("yaqmc").build()
+        // Renderer playback goes straight to Core, so no controller binds to register the session.
+        // Register it now so Media3 can publish media notifications and manage foreground playback.
+        addSession(session!!)
         org.yaqmc.android.lyrics.AndroidLyricsSurfaces.init(this)
         org.yaqmc.android.lyrics.AndroidLyricsSurfaces.attachCarSink(player!!::setCarLyricLine)
         ContextCompat.registerReceiver(
