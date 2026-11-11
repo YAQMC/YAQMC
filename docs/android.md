@@ -44,7 +44,7 @@ Android builds Core with the `plugins` feature (Wasmtime 36.0.19 with Cranelift,
 and `x86_64`; `system-media` and `local-api` stay off. Core reports the platform as `android`, so a manifest must
 list `android` in `platforms` (or omit `platforms`) to activate; `unknown` never matches. **Plugins** is the fifth
 bottom-navigation item on phones and a rail item on tablets; plugin-defined v4 pages appear in the rail and as
-shortcuts on the Plugins page. See [Plugins page and plugin store](plugin-store.md).
+shortcuts on the Plugins page. See [Plugins page and plugin store](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-store.md).
 
 **Choose file** opens the system document picker (`ACTION_OPEN_DOCUMENT`, no storage permission). The selected
 `content://` document is copied with `ContentResolver` on a background thread into

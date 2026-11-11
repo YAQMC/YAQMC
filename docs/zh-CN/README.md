@@ -31,10 +31,10 @@
 
 ## 插件开发者
 
-- [插件平台](plugin-platform.md)、[清单](plugin-manifest.md)、[Provider Component API](provider-component-api.md)、
-  [安全](plugin-security.md)和[开发](plugin-development.md)
-- [示例插件](plugin-examples.md)、[样式 API](plugin-style-api.md)和[场景 API](plugin-scene-api.md)
-- [插件页面与布局](plugin-pages-api.md)和[歌词工具栏按钮](plugin-lyrics-api.md)
+- [插件平台](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-platform.md)、[清单](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-manifest.md)、[Provider Component API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/provider-component-api.md)、
+  [安全](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-security.md)和[开发](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-development.md)
+- [示例插件](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-examples.md)、[样式 API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-style-api.md)和[场景 API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-scene-api.md)
+- [插件页面与布局](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-pages-api.md)和[歌词工具栏按钮](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-lyrics-api.md)
 
 ## 测试与发布
 
@@ -44,5 +44,3 @@
 - [发布与合规记录](../release/README.md)
 
 验收记录会区分自动化检查、真实账号和真实设备证据。没有满足相应验收记录的项目不能写成“已验证”。
-
-- [Companion repositories / 独立插件与网站仓库](companion-repositories.md)

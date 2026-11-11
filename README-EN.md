@@ -46,7 +46,7 @@ the architecture and tested scope.
 - Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
   dedicated on-surface unlock control.
 - English and Simplified Chinese UI, light/dark themes, configurable primary and secondary colors, custom
-  backgrounds, native output-device selection, and optional local [example plugins](docs/plugin-examples.md), including
+  backgrounds, native output-device selection, and optional local [example plugins](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-examples.md), including
   capability-sandboxed API v3 music-platform Components. All examples are disabled by default and are unverified local
   sideloads.
 - Seekable HTTP Range streaming, bounded cache, queue persistence, one-time signed-URL recovery, and an optional
@@ -201,8 +201,8 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md),
 [lyrics presets](docs/lyrics-presets.md),
 [lyrics composer](docs/lyrics-composer.md),
-[plugin platform](docs/plugin-platform.md),
-[example plugins](docs/plugin-examples.md),
+[plugin platform](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-platform.md),
+[example plugins](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-examples.md),
 [local API](docs/local-api.md), [logging](docs/logging.md),
 [diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md),
 [security & privacy](docs/security.md), and [CI](docs/ci.md), or the complete
@@ -231,4 +231,7 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 > the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md). Packaged AMLL components are
 > `AGPL-3.0-only`; see [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Plugin examples and offline API: [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins) · Website source: [YAQMC/yaqmc.github.io](https://github.com/YAQMC/yaqmc.github.io) · [Website](https://yaqmc.github.io/)
+## Related repositories
+
+- [Plugins, SDK and developer documentation](https://github.com/YAQMC/yaqmc-plugins)
+- [Website source and Pages deployment](https://github.com/YAQMC/yaqmc.github.io) · [Website](https://yaqmc.github.io/)

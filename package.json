@@ -24,9 +24,6 @@
     "test:playwright": "playwright test",
     "test:e2e:electron": "playwright test -c playwright.electron.config.ts",
     "docs:check": "node scripts/check-public-docs.mjs",
-    "plugin:example:sync": "node scripts/sync-plugin-example.mjs --export",
-    "plugin:example:check": "node scripts/sync-plugin-example.mjs --check",
-    "plugin:build:host-fixture": "node scripts/build-provider-component-example.mjs host-fixture",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run docs:check && npm run lint && npm run test && npm run build",
@@ -52,7 +49,8 @@
     "p7:fake-playback": "node scripts/migration/p7-fake-playback.mjs",
     "soak": "node scripts/soak-electron.mjs",
     "perf:windows-gpu": "node scripts/migration/lyrics-multiwindow-gpu-profile.mjs",
-    "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs"
+    "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs",
+    "test:build:component-host-fixture": "node scripts/build-component-host-fixture.mjs"
   },
   "dependencies": {
     "@applemusic-like-lyrics/core": "0.5.2",

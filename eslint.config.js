@@ -24,7 +24,6 @@ export default tseslint.config(
       'playwright-report/**',
       'test-results/**',
       'blob-report/**',
-      'sdk/plugin/**',
       'tests/fixtures/**',
       'packages/*/dist',
       'apps/*/dist',

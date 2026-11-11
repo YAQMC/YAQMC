@@ -111,7 +111,7 @@ Android 用户：
 - 可以分别设置主色与副色，应用内标志会自动跟随这两种颜色。
 - 托盘、任务栏和安装包使用固定的 YAQMC 原生标志。
 - 支持自定义背景、字体和歌词样式。
-- 可从[示例插件](docs/zh-CN/plugin-examples.md)安装本地 `*.yaqmc-plugin`：旧版样式/歌词场景/隔离脚本，以及受 Wasmtime
+- 可从[示例插件](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-examples.md)安装本地 `*.yaqmc-plugin`：旧版样式/歌词场景/隔离脚本，以及受 Wasmtime
   能力沙箱约束的 API v3 音乐平台 Component。全部默认不启用，当前均为未验证发行方的本地旁加载包。
 
 ## 第一次使用
@@ -259,8 +259,8 @@ cargo test --workspace -- --ignored --nocapture
 - [账号资料库](docs/zh-CN/account-library.md)
 - [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
 - [歌词预设](docs/zh-CN/lyrics-presets.md)
-- [插件平台](docs/zh-CN/plugin-platform.md)
-- [示例插件下载](docs/zh-CN/plugin-examples.md)
+- [插件平台](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-platform.md)
+- [示例插件下载](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-examples.md)
 - [歌词编排器](docs/zh-CN/lyrics-composer.md)
 - [本地 API](docs/zh-CN/local-api.md)
 - [日志系统](docs/zh-CN/logging.md)与[诊断快照与诊断包](docs/zh-CN/diagnostics.md)
@@ -292,4 +292,7 @@ OpenAI Codex 在工程实现、测试、审查、文档和发布流程中的协�
 > [对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)提供。打包的 AMLL 组件采用
 > `AGPL-3.0-only`，具体边界见[第三方许可证](THIRD_PARTY_NOTICES.md)。
 
-插件示例与离线 API：[YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins) · 官网源码：[YAQMC/yaqmc.github.io](https://github.com/YAQMC/yaqmc.github.io) · [官网](https://yaqmc.github.io/)
+## 相关仓库
+
+- [插件、SDK 与开发文档](https://github.com/YAQMC/yaqmc-plugins)
+- [官网源码与 Pages 部署](https://github.com/YAQMC/yaqmc.github.io) · [访问官网](https://yaqmc.github.io/)

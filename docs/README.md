@@ -32,12 +32,12 @@ This directory contains the public user, tester, contributor, and release docume
 
 ## Plugin authors
 
-- [Platform](plugin-platform.md), [manifest](plugin-manifest.md), [Provider Component API](provider-component-api.md),
-  [security](plugin-security.md), and [development](plugin-development.md)
-- [Example plugins](plugin-examples.md), [style API](plugin-style-api.md), and
-  [scene API](plugin-scene-api.md)
-- [Plugins page and plugin store](plugin-store.md)
-- [Plugin pages and layouts](plugin-pages-api.md) and [lyrics toolbar buttons](plugin-lyrics-api.md)
+- [Platform](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-platform.md), [manifest](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-manifest.md), [Provider Component API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/provider-component-api.md),
+  [security](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-security.md), and [development](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-development.md)
+- [Example plugins](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-examples.md), [style API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-style-api.md), and
+  [scene API](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-scene-api.md)
+- [Plugins page and plugin store](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-store.md)
+- [Plugin pages and layouts](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-pages-api.md) and [lyrics toolbar buttons](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-lyrics-api.md)
 
 ## Testing and release
 
@@ -48,5 +48,3 @@ This directory contains the public user, tester, contributor, and release docume
 
 Acceptance records distinguish deterministic checks from real-account and real-device evidence. A pending gate must
 not be described as verified without the evidence required by its acceptance record.
-
-- [Companion repositories / 独立插件与网站仓库](companion-repositories.md)

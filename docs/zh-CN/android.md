@@ -30,7 +30,7 @@ Bundle。
 
 ## 插件
 
-Android 以 `plugins` 特性构建 Core（Wasmtime 36.0.19、Cranelift、Component Model），支持 `arm64-v8a` 和 `x86_64`；`system-media` 与 `local-api` 保持关闭。Core 将平台报告为 `android`，清单的 `platforms` 必须包含 `android`（或省略 `platforms`）才能启用；`unknown` 永远不会匹配。手机底部导航第五项为**插件**，平板侧栏同样提供；插件自定义的 v4 页面显示在侧栏，并作为插件页面的快捷入口。详见[插件页面与插件商店](plugin-store.md)。
+Android 以 `plugins` 特性构建 Core（Wasmtime 36.0.19、Cranelift、Component Model），支持 `arm64-v8a` 和 `x86_64`；`system-media` 与 `local-api` 保持关闭。Core 将平台报告为 `android`，清单的 `platforms` 必须包含 `android`（或省略 `platforms`）才能启用；`unknown` 永远不会匹配。手机底部导航第五项为**插件**，平板侧栏同样提供；插件自定义的 v4 页面显示在侧栏，并作为插件页面的快捷入口。详见[插件页面与插件商店](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-store.md)。
 
 **选择文件**会打开系统文档选择器（`ACTION_OPEN_DOCUMENT`，无需存储权限）。所选 `content://` 文档在后台线程通过 `ContentResolver` 复制到 `cacheDir/plugin-imports`，流式复制时限制为 32 MiB（不信任声明的文件名和长度），只有该私有路径会进入既有的审核与安装事务。取消选择不返回任何内容；旧的选择会在下次选择和启动时删除。所有 Core 调用都在 Core 运行时中执行，不占用 UI 线程。
 
