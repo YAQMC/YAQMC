@@ -35,7 +35,7 @@ import { ActionMenu } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
-import { isAndroidRuntime } from '../application/host-capabilities';
+import { isAndroidRuntime, supportsWindowControls } from '../application/host-capabilities';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 import { useLyricsTransportDefinition } from '../application/use-lyrics-transport';
 import { BUILTIN_TRANSPORT_WINDOW_ID } from '../application/lyrics-transport';
@@ -59,6 +59,7 @@ import { CommentDanmaku } from './CommentDanmaku';
 import { sceneForOrientation } from '../application/lyrics-scene-layout';
 import { getHostBridge } from '../application/yaqmc-runtime';
 import { PluginLyricsActions } from './PluginLyricsActions';
+import { LyricsWindowControls } from './LyricsWindowControls';
 
 type LyricsStyle = CSSProperties & {
   '--lyrics-color': string;
@@ -104,6 +105,7 @@ function LyricsPanelStage({
 }: LyricsPanelProps & { stageState: LyricsStageState }) {
   noteLyricsPanelCommit();
   const compact = useCompactPlayerLayout();
+  const windowControls = supportsWindowControls();
   const stage = useRef<HTMLElement>(null);
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
   useLayoutEffect(() => {
@@ -508,16 +510,22 @@ function LyricsPanelStage({
       />
       <CommentDanmaku key={currentTrackId} document={document} />
 
-      <div className="lyrics-stage__topbar" data-hidden={(!compact && controlsHidden) || undefined}>
-        <PluginLyricsActions />
+      <div className="lyrics-stage__hover-controls yaqmc-no-drag">
         <IconButton
-          className="yaqmc-no-drag"
           label={nextCoverLabel}
-          size="large"
+          size="small"
           onClick={() => selectLyricsPreset(nextPreset.id)}
         >
           <Image size={18} />
         </IconButton>
+        <LyricsWindowControls />
+      </div>
+      <div
+        className="lyrics-stage__topbar"
+        data-window-controls={windowControls || undefined}
+        data-hidden={(!compact && controlsHidden) || undefined}
+      >
+        <PluginLyricsActions includeWindowActions={!windowControls} />
       </div>
 
       <div

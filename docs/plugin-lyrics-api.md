@@ -32,6 +32,12 @@ executes a command. Plugins do not receive a callable window bridge or a general
 on hosts without `windowControls`; ordinary actions remain available. A window button does not also emit `ui.action`.
 Ordinary buttons send `{ id, slot: 'lyrics' }` to their owning plugin only. Tooltips include the plugin name.
 
+The host groups the layout switch and native window controls on the lyrics page. The group is transparent until hovered
+or reached by keyboard focus, and stays visible on touch-only pointers. When these native controls
+are available, plugin `windowAction` registrations reuse them instead of adding duplicate buttons;
+ordinary plugin actions remain separate. Disabling a plugin removes its contributions, while the
+host's native window controls remain available.
+
 Each plugin may register 4 actions, with 12 actions across all plugins. Registering an existing ID updates it;
 exceeding a limit rejects with `lyrics-action-limit`. Invalid payloads reject with `invalid-lyrics-action`.
 Core and renderer independently validate fields, commands and permission. Existing bridge rate and size limits apply.

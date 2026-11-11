@@ -15,10 +15,12 @@ const icons = {
   music: Music,
 };
 
-export function PluginLyricsActions() {
+export function PluginLyricsActions({
+  includeWindowActions = true,
+}: { includeWindowActions?: boolean } = {}) {
   const { lyrics } = usePluginUiSnapshot();
   return lyrics
-    .filter((action) => !action.windowAction || supportsWindowControls())
+    .filter((action) => !action.windowAction || (includeWindowActions && supportsWindowControls()))
     .map((action) => {
       const icon =
         action.icon ??

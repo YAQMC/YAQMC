@@ -1832,6 +1832,59 @@ input[type='range']:disabled {
   pointer-events: auto;
 }
 
+.lyrics-stage__topbar[data-window-controls] {
+  padding-right: 170px;
+}
+
+.lyrics-stage__topbar:not([data-window-controls]) {
+  padding-right: 62px;
+}
+
+.lyrics-stage__hover-controls {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--safe-top, 0px) + 10px);
+  right: calc(var(--safe-right, 0px) + 10px);
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity 160ms var(--ease-out);
+}
+
+.lyrics-stage__hover-controls:hover,
+.lyrics-stage__hover-controls:has(:focus-visible) {
+  opacity: 1;
+}
+
+.lyrics-stage__window-controls {
+  display: flex;
+  gap: 2px;
+}
+
+.lyrics-stage__hover-controls .icon-button {
+  width: 34px;
+  height: 34px;
+  color: var(--lyrics-ink, var(--text));
+}
+
+.lyrics-stage__window-controls .lyrics-stage__window-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .lyrics-stage__hover-controls {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-stage__hover-controls {
+    transition: none;
+  }
+}
+
 .lyrics-stage__topbar .icon-button,
 .lyrics-stage__controls .icon-button {
   color: color-mix(in srgb, var(--lyrics-ink) 80%, transparent);

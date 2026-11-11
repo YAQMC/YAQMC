@@ -31,6 +31,14 @@ afterEach(() => {
 const base = { pluginId: 'dev.test', pluginName: 'Test', id: 'minimize', label: 'Minimize' };
 
 describe('lyrics toolbar plugin actions', () => {
+  it('reuses native window controls while retaining ordinary plugin actions', () => {
+    registerPluginLyricsAction({ ...base, windowAction: 'minimize' });
+    registerPluginLyricsAction({ ...base, id: 'info', label: 'Info' });
+    render(<PluginLyricsActions includeWindowActions={false} />);
+    expect(screen.queryByRole('button', { name: 'Minimize' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Info' }));
+    expect(host.dispatch).toHaveBeenCalledExactlyOnceWith('dev.test', 'info', 'lyrics');
+  });
   it('performs a window command only after a click, then removes retired controls', () => {
     registerPluginLyricsAction({ ...base, windowAction: 'minimize' });
     render(<PluginLyricsActions />);
