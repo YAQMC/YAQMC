@@ -2,6 +2,8 @@ import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AmllSettings } from '../../application/preferences';
 import { useLyricsStageStore } from '../../application/lyrics-stage-machine';
+import { useCommentsPanelStore } from '../../application/comments-panel-store';
+import { allSongs } from '../../providers/fake/fixtures';
 import type { LyricDocument } from '../../domain/music';
 import { LyricsViewport } from './LyricsViewport';
 
@@ -11,6 +13,9 @@ vi.mock('../../application/host-capabilities', async (importOriginal) => ({
 }));
 
 const invoke = vi.fn().mockResolvedValue({ value: true });
+const addListener = vi.fn(
+  (_event: string, _listener: (payload: Record<string, unknown>) => void) => ({ remove: vi.fn() }),
+);
 
 function lyricDocument(text: string, romanization?: string): LyricDocument {
   return {
@@ -69,8 +74,9 @@ function calls(method: string) {
 describe('LyricsViewport native Android overlay', () => {
   beforeEach(() => {
     invoke.mockClear();
+    addListener.mockClear();
     (globalThis as unknown as { Capacitor?: unknown }).Capacitor = {
-      Plugins: { YaqmcNative: { invoke, addListener: vi.fn(() => ({ remove: vi.fn() })) } },
+      Plugins: { YaqmcNative: { invoke, addListener } },
     };
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       top: 10,
@@ -84,12 +90,14 @@ describe('LyricsViewport native Android overlay', () => {
       toJSON: () => ({}),
     });
     useLyricsStageStore.setState({ stage: 'open' });
+    useCommentsPanelStore.setState({ song: null });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     delete (globalThis as unknown as { Capacitor?: unknown }).Capacitor;
     useLyricsStageStore.setState({ stage: 'closed' });
+    useCommentsPanelStore.setState({ song: null });
   });
 
   it('shows once with lines and the separated alignment options', () => {
@@ -185,5 +193,51 @@ describe('LyricsViewport native Android overlay', () => {
     expect(shows[0]!.params!.options).toMatchObject({ textAlign: 'center' });
     view.unmount();
     expect(calls('lyrics_hide')).toHaveLength(2);
+  });
+
+  it('immediately yields the native overlay to comments and restores the latest lyrics on close', () => {
+    const view = render(<LyricsViewport {...props()} />);
+    invoke.mockClear();
+    act(() => useCommentsPanelStore.getState().open(allSongs[0]!));
+    expect(calls('lyrics_hide')).toEqual([{ method: 'lyrics_hide', params: { immediate: true } }]);
+
+    invoke.mockClear();
+    view.rerender(
+      <LyricsViewport {...props({ document: lyricDocument('次の曲'), align: 'right' })} />,
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    act(() => useCommentsPanelStore.getState().close());
+    expect(calls('lyrics_show')).toHaveLength(1);
+    expect(calls('lyrics_show')[0]!.params).toMatchObject({
+      lines: [{ words: [{ text: '次の曲' }] }, { words: [{ text: '二行目' }] }],
+      options: { textAlign: 'right' },
+    });
+  });
+
+  it('does not show behind comments opened before the lyrics stage', () => {
+    useCommentsPanelStore.getState().open(allSongs[0]!);
+    render(<LyricsViewport {...props()} />);
+    expect(calls('lyrics_show')).toHaveLength(0);
+    act(() => useLyricsStageStore.setState({ stage: 'closed' }));
+    act(() => useCommentsPanelStore.getState().close());
+    expect(calls('lyrics_show')).toHaveLength(0);
+    act(() => useLyricsStageStore.setState({ stage: 'open' }));
+    expect(calls('lyrics_show')).toHaveLength(1);
+  });
+
+  it('stops seeking from the hidden overlay and reattaches only after comments close', () => {
+    const seek = vi.fn();
+    render(<LyricsViewport {...props({ seek })} />);
+    const listener = addListener.mock.calls[0]![1];
+    const handle = addListener.mock.results[0]!.value;
+    act(() => useCommentsPanelStore.getState().open(allSongs[0]!));
+    expect(handle.remove).toHaveBeenCalledOnce();
+    // A queued native event must not seek after the modal takes over.
+    listener({ positionMs: 12345 });
+    expect(seek).not.toHaveBeenCalled();
+    act(() => useCommentsPanelStore.getState().close());
+    expect(addListener).toHaveBeenCalledTimes(2);
+    addListener.mock.calls[1]![1]({ positionMs: 54321 });
+    expect(seek).toHaveBeenCalledExactlyOnceWith(54321);
   });
 });

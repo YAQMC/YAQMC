@@ -97,6 +97,11 @@ describe('native-lyrics-bridge', () => {
     expect(invokeMock).toHaveBeenCalledWith({
       method: 'lyrics_hide',
     });
+    await hideNativeLyrics(true);
+    expect(invokeMock).toHaveBeenLastCalledWith({
+      method: 'lyrics_hide',
+      params: { immediate: true },
+    });
   });
 
   it('updates native geometry and style without resending lyric lines', async () => {
@@ -169,6 +174,8 @@ describe('native-lyrics-bridge', () => {
     // Flush microtasks for the promise chain
     await Promise.resolve();
     expect(removeMock).toHaveBeenCalled();
+    listenerFn?.({ positionMs: 20000 });
+    expect(seekCallback).toHaveBeenCalledTimes(1);
   });
 
   it('handles synchronous listener handle return from native bridge', () => {

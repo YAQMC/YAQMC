@@ -271,7 +271,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             }
             "lyrics_hide" -> {
                 bridge.executeOnMainThread {
-                    lyricsOverlay?.hide()
+                    lyricsOverlay?.hide(immediate = params.optBoolean("immediate", false))
                     call.resolve(JSObject().put("value", true))
                 }
             }

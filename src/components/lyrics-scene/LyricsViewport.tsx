@@ -21,6 +21,7 @@ import type {
 } from '../../application/preferences';
 import { isAndroidRuntime } from '../../application/host-capabilities';
 import { useLyricsStageStore } from '../../application/lyrics-stage-machine';
+import { useCommentsPanelStore } from '../../application/comments-panel-store';
 import { usePlayerStore } from '../../application/player-store';
 import { useLyricTextScript } from '../../application/use-lyric-text-script';
 import { presentLyricLine } from '../../application/lyrics-text';
@@ -241,6 +242,7 @@ export function LyricsViewport({
   const amllLines = useMemo(() => model?.lines.map(toAmllLyricLine) ?? [], [model]);
   const nativeContainerRef = useRef<HTMLDivElement>(null);
   const stage = useLyricsStageStore((s) => s.stage);
+  const commentsOpen = useCommentsPanelStore((s) => s.song !== null);
   const nativeShownRef = useRef(false);
   const wordAnimationRoot = useRef<HTMLDivElement>(null);
 
@@ -256,7 +258,8 @@ export function LyricsViewport({
     Boolean(document) &&
     document?.syncMode !== 'unsynchronized' &&
     (model?.lines.length ?? 0) > 0 &&
-    stage === 'open';
+    stage === 'open' &&
+    !commentsOpen;
   const documentOffsetMs = document?.metadata.offsetMs ?? 0;
   const nativeOptions = useCallback(
     (el: HTMLElement): NativeLyricsOptions => {
@@ -350,14 +353,16 @@ export function LyricsViewport({
     return () => {
       ro?.disconnect();
       nativeShownRef.current = false;
-      void hideNativeLyrics();
+      // This cleanup belongs to the previous render. Read the current modal state so comments
+      // immediately remove the sibling native view from drawing and touch dispatch, without a fade.
+      void hideNativeLyrics(useCommentsPanelStore.getState().song !== null);
     };
   }, [nativeVisible, pushNative, useNativeOverlay]);
 
   useEffect(() => {
-    if (!useNativeOverlay || !allowSeek) return;
+    if (!useNativeOverlay || !nativeVisible || !allowSeek) return;
     return onNativeLyricsSeek(seek);
-  }, [allowSeek, seek, useNativeOverlay]);
+  }, [allowSeek, nativeVisible, seek, useNativeOverlay]);
 
   useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
 

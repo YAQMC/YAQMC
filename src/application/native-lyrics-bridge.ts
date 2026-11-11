@@ -95,11 +95,13 @@ export async function setNativeCarBluetoothLyrics(enabled: boolean): Promise<voi
   await plugin.invoke({ method: 'android_car_bluetooth_lyrics', params: { enabled } });
 }
 
-export async function hideNativeLyrics(): Promise<void> {
+/** Modal occlusion must remove the native view from touch dispatch without waiting for a fade. */
+export async function hideNativeLyrics(immediate = false): Promise<void> {
   const plugin = getCapacitorPlugin();
   if (!plugin) return;
   await plugin.invoke({
     method: 'lyrics_hide',
+    ...(immediate ? { params: { immediate: true } } : {}),
   });
 }
 
@@ -111,6 +113,7 @@ export function onNativeLyricsSeek(callback: (positionMs: number) => void): () =
 
   try {
     const result = plugin.addListener('lyricsSeek', (event) => {
+      if (removed) return;
       const pos = event.positionMs;
       if (typeof pos === 'number') {
         callback(pos);

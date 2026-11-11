@@ -98,10 +98,12 @@ class NativeLyricsOverlay(
         val view = AMLLPlayerView(activity).apply {
             visibility = View.GONE
             onLineClick = { line ->
-                val audioBackend = CoreManager.audioBackend
-                val audioPosition = audioPosition(line.startTimeMs)
-                audioBackend?.seek(audioPosition)
-                onSeekListener?.invoke(audioPosition)
+                if (isRunning) {
+                    val audioBackend = CoreManager.audioBackend
+                    val audioPosition = audioPosition(line.startTimeMs)
+                    audioBackend?.seek(audioPosition)
+                    onSeekListener?.invoke(audioPosition)
+                }
             }
         }
         val params = createLayoutParams(
@@ -156,13 +158,18 @@ class NativeLyricsOverlay(
     }
 
     @MainThread
-    fun hide() {
+    fun hide(immediate: Boolean = false) {
         isRunning = false
         cancelFrameLoop()
         setAnimating(false)
         val view = playerView ?: return
         if (view.visibility != View.VISIBLE) return
         view.animate().cancel()
+        if (immediate) {
+            // WebView dialogs cannot cover a sibling native view. GONE also releases touch input.
+            view.visibility = View.GONE
+            return
+        }
         view.animate().alpha(0f).setDuration(FADE_OUT_MS).withEndAction {
             if (!isRunning) view.visibility = View.GONE
         }.start()
