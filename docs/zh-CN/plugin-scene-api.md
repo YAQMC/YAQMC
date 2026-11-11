@@ -22,7 +22,7 @@
 
 宿主继续管理歌词时间、填色、暂停和跳转；关闭「逐字跳动」或启用系统减少动态效果时也关闭自定义跳动。
 Android 上配置自定义跳动的场景使用共用 Web 歌词渲染器。源码示例为
-`examples/plugins/scene-pack/scenes/vinyl-glow.scene.json`，SDK 类型为 `PluginLyricWordAnimation`。
+`yaqmc-plugins/plugins/scene-pack/scenes/vinyl-glow.scene.json`，SDK 类型为 `PluginLyricWordAnimation`。
 视口暴露 `[data-yaqmc="lyrics-viewport"]`，自定义跳动的词节点暴露 `[data-yaqmc="lyric-word"]`；不依赖 AMLL
 生成的类名。停用插件后撤销其场景效果。
 

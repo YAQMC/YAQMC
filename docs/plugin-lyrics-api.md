@@ -47,6 +47,6 @@ remove contributions; update candidates publish staged buttons only after valida
 The toolbar follows lyrics controls' visibility and stays usable by keyboard focus. Dragging is available in the
 top 40 pixels of the windowed Electron lyrics page, excluding visible buttons. Fullscreen and Android have no drag strip.
 
-The copyable starter is generated with `npm run plugin:example:sync` into the sibling `YAQMC-plugin-example` directory.
+The copyable starter lives in [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/starter).
 It includes a working window-button plugin, a standalone packer, SDK types and offline API docs. See
 [plugin development](plugin-development.md) and [plugin security](plugin-security.md).

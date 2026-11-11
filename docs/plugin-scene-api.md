@@ -29,7 +29,7 @@ Use 2–8 strictly increasing offsets, starting at 0 and ending at 1. `y` is bou
 `linear`, `ease-out` and `ease-in-out`. Invalid timelines fall back to the default motion. No new permission is required.
 The host retains the lyric clock, fill masks, pause and seek; disabling word jump or enabling reduced motion disables
 custom motion. Android scenes with custom motion use the shared web lyric renderer. See the source example
-`examples/plugins/scene-pack/scenes/vinyl-glow.scene.json` and the SDK type `PluginLyricWordAnimation`.
+`yaqmc-plugins/plugins/scene-pack/scenes/vinyl-glow.scene.json` and the SDK type `PluginLyricWordAnimation`.
 
 The custom-motion viewport exposes `[data-yaqmc="lyrics-viewport"]`; its timed word nodes expose
 `[data-yaqmc="lyric-word"]`. Generated AMLL class names remain unsupported. Disabling a plugin removes its scene and

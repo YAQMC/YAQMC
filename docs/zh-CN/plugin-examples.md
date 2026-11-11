@@ -1,30 +1,32 @@
 # 示例插件
 
-运行 `npm run plugin:example:sync` 可在仓库旁创建可直接复制的 `YAQMC-plugin-example`，包含离线 API 文档、
+插件源码、打包命令和可复制模板均位于独立的 [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins) 仓库；下述插件构建命令在该仓库中执行。
+
+复制插件仓库中的 `plugins/starter` 即可开始开发，包含离线 API 文档、
 SDK 类型和无第三方依赖的打包器。示例通过[歌词工具栏 API](plugin-lyrics-api.md)添加可选的歌词页窗口按钮。
 
 > **简体中文** | [English](../plugin-examples.md)
 
 这些是**未签名的本地示例**，不是 YAQMC 内置功能，默认不启用。在 设置 → 插件 → 选择文件 中安装。没有插件市场。
 
-源码在 `examples/plugins/`。已打包的 `*.yaqmc-plugin` 在
-[`examples/plugins/packages/`](../../examples/plugins/packages/)。可用 `npm run plugins:pack` 重新打包。
-Rust Provider Component 使用独立的可复现 target。只读目录用 `npm run plugin:pack:provider-example`；完整能力夹具用
-`npm run plugin:verify:provider-platform-example` 构建、打包并运行集成验证。
+源码在 `yaqmc-plugins/plugins/`。已打包的 `*.yaqmc-plugin` 在
+[`yaqmc-plugins/plugins/packages/`](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/)。可用 `npm run pack` 重新打包。
+Rust Provider Component 使用独立的可复现 target。只读目录用 `npm run provider:catalog`；完整能力夹具用
+`npm run provider:platform` 构建并打包；客户端仍保留相应的宿主集成回归测试。
 
 ## 下载
 
-| 包                                                                                            | 实际改动                                    | 用到的 API                                                                    |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
-| [Sakura](../../examples/plugins/packages/dev.yaqmc.example.sakura-1.0.0.yaqmc-plugin)         | 侧栏、播放条、队列、歌曲标题（粉色）        | 全部 v1 `data-yaqmc` 选择器与 `--yaqmc-*`。与 Night 冲突                      |
-| [Night](../../examples/plugins/packages/dev.yaqmc.example.night-1.0.0.yaqmc-plugin)           | 同一套铬框，冷色                            | 同样的样式 API。与 Sakura 冲突                                                |
-| [歌词场景](../../examples/plugins/packages/dev.yaqmc.example.scenes-1.0.0.yaqmc-plugin)       | 歌词预设中增加 **Aurora** 与 **Vinyl glow** | Scene Schema + 全部 `data-scene-widget` / `data-scene-state`                  |
-| [会话书签](../../examples/plugins/packages/dev.yaqmc.example.now-playing-1.0.0.yaqmc-plugin)  | 同一队列条目上恢复进度                      | 曲目/歌词/播放器/主题读取、五个事件、存储、日志、`player.seek`、`player.play` |
-| [Studio](../../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin)         | 铬框 + 两个场景 + 书签脚本                  | 样式 + 场景 + 脚本 + 全部 v1 权限                                             |
-| [Ink core](../../examples/plugins/packages/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin)     | 设置共享 `--yaqmc-*`                        | 仅样式变量                                                                    |
-| [Ink accent](../../examples/plugins/packages/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin) | 把这些变量用到铬框                          | 样式选择器。**依赖 Ink core**                                                 |
-| [只读目录](../../examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin)      | 增加确定性的示例音乐平台                    | API v3 `provider.catalog`；无网络、账号、存储或 renderer 权限                 |
-| [完整平台](../../examples/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin)     | 增加带可播放本地音频的确定性平台            | API v3 目录（含发现页）、播放、推荐、歌词、私有存储和隔离的合成账号           |
+| 包                                                                                                                              | 实际改动                                    | 用到的 API                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| [Sakura](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.sakura-1.0.0.yaqmc-plugin)         | 侧栏、播放条、队列、歌曲标题（粉色）        | 全部 v1 `data-yaqmc` 选择器与 `--yaqmc-*`。与 Night 冲突                      |
+| [Night](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.night-1.0.0.yaqmc-plugin)           | 同一套铬框，冷色                            | 同样的样式 API。与 Sakura 冲突                                                |
+| [歌词场景](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.scenes-1.0.0.yaqmc-plugin)       | 歌词预设中增加 **Aurora** 与 **Vinyl glow** | Scene Schema + 全部 `data-scene-widget` / `data-scene-state`                  |
+| [会话书签](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.now-playing-1.0.0.yaqmc-plugin)  | 同一队列条目上恢复进度                      | 曲目/歌词/播放器/主题读取、五个事件、存储、日志、`player.seek`、`player.play` |
+| [Studio](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin)         | 铬框 + 两个场景 + 书签脚本                  | 样式 + 场景 + 脚本 + 全部 v1 权限                                             |
+| [Ink core](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin)     | 设置共享 `--yaqmc-*`                        | 仅样式变量                                                                    |
+| [Ink accent](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin) | 把这些变量用到铬框                          | 样式选择器。**依赖 Ink core**                                                 |
+| [只读目录](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin)      | 增加确定性的示例音乐平台                    | API v3 `provider.catalog`；无网络、账号、存储或 renderer 权限                 |
+| [完整平台](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin)     | 增加带可播放本地音频的确定性平台            | API v3 目录（含发现页）、播放、推荐、歌词、私有存储和隔离的合成账号           |
 
 `player.pause`、`player.toggle`、`player.next`、`player.previous` 走同一条隔离桥和 PlayerService。示例**不会自动调用**它们，以免抢走队列。它们会调用 `seek` 和 `play`，因此书签恢复/继续播放是可以听见、看见的真实控制。
 
@@ -37,14 +39,14 @@ Rust Provider Component 使用独立的可复现 target。只读目录用 `npm r
 
 先启用 **Ink core** 再启用 **Ink accent**。Sakura 与 Night 不能同时启用。
 
-v2 示例源码在 `examples/plugins/script-actions`（设置 + 右键/播放栏）和 `examples/plugins/script-network`
-（仅 `https://example.com` 的宿主代理请求）。用 `npm run plugin:pack` 打包。Provider Component 源码位于
-`examples/plugins/provider-catalog-rust` 和 `examples/plugins/provider-platform-rust`，同一个包可用于受支持的
+v2 示例源码在 `yaqmc-plugins/plugins/script-actions`（设置 + 右键/播放栏）和 `yaqmc-plugins/plugins/script-network`
+（仅 `https://example.com` 的宿主代理请求）。用 `npm run pack` 打包。Provider Component 源码位于
+`yaqmc-plugins/plugins/provider-catalog-rust` 和 `yaqmc-plugins/plugins/provider-platform-rust`，同一个包可用于受支持的
 Windows/Linux 架构且不含原生二进制。完整示例只使用 `accounts.example.com`，OAuth 回调由自动测试完成，并不连接真实账号。
 它返回 Host 缓存配方，由 Core 消费不透明音源；媒体 URL/路径不会进入 renderer。敌对探测夹具仅用于自动测试，不要作为
 用户插件启用。
 
-API v4 示例 `examples/plugins/script-pages` 注册一个“Listening log”页面、一个打开该页面的侧栏入口，以及一个切换首页布局偏好（雷达优先）的页面按钮。见[插件页面 API](plugin-pages-api.md)。
+API v4 示例 `yaqmc-plugins/plugins/script-pages` 注册一个“Listening log”页面、一个打开该页面的侧栏入口，以及一个切换首页布局偏好（雷达优先）的页面按钮。见[插件页面 API](plugin-pages-api.md)。
 
 ## 未包含
 

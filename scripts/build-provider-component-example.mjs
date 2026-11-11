@@ -6,30 +6,6 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const builds = {
-  example: {
-    root: path.join(root, 'examples', 'plugins', 'provider-catalog-rust'),
-    artifact: 'yaqmc_provider_catalog_example.wasm',
-    destination: path.join(
-      root,
-      'examples',
-      'plugins',
-      'provider-catalog-rust',
-      'component',
-      'provider.wasm',
-    ),
-  },
-  'platform-example': {
-    root: path.join(root, 'examples', 'plugins', 'provider-platform-rust'),
-    artifact: 'yaqmc_provider_platform_example.wasm',
-    destination: path.join(
-      root,
-      'examples',
-      'plugins',
-      'provider-platform-rust',
-      'component',
-      'provider.wasm',
-    ),
-  },
   'host-fixture': {
     root: path.join(root, 'crates', 'yaqmc-core', 'tests', 'fixtures', 'component-host-guest'),
     artifact: 'yaqmc_component_host_guest.wasm',
@@ -43,7 +19,7 @@ const builds = {
     ),
   },
 };
-const build = builds[process.argv[2] ?? 'example'];
+const build = builds[process.argv[2] ?? 'host-fixture'];
 if (!build) throw new Error('unknown Provider Component build target');
 const exampleRoot = build.root;
 const manifestPath = path.join(exampleRoot, 'Cargo.toml');

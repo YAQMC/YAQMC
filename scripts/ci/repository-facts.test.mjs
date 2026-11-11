@@ -14,7 +14,7 @@ const FACT_FILES = [
   '.github/actions/setup-packaging/action.yml',
   '.github/workflows/ci.yml',
   '.github/workflows/electron-release.yml',
-  '.github/workflows/pages.yml',
+  '.github/workflows/companion-repos.yml',
   'apps/desktop/electron-builder.yml',
   'apps/desktop/main/index.ts',
   'apps/desktop/main/core/paths.ts',

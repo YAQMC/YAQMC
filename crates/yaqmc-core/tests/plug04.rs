@@ -1,6 +1,6 @@
 //! PLUG-04: Scene API v2 demo plugin automated coverage.
 //!
-//! Parses unpacked `examples/plugins/scene-pack` (Aurora / Vinyl glow), asserts
+//! Parses unpacked `tests/fixtures/plugins/scene-pack` (Aurora / Vinyl glow), asserts
 //! the scene JSON fields the lyrics runtime expects, and register/list/unregister
 //! against a temp `ExtensionHost` root. Does not start Electron, enable hostile
 //! fixtures, or claim the lyrics GUI scene picker.
@@ -18,7 +18,7 @@ const HOSTILE_ID: &str = "dev.yaqmc.test.hostile";
 const SCENE_WIDGETS: [&str; 5] = ["background", "artwork", "metadata", "lyrics", "transport"];
 
 fn examples_plugins() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/plugins")
 }
 
 fn scene_pack() -> PathBuf {

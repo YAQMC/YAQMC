@@ -1,7 +1,7 @@
 //! PLUG-01: example-plugin install/enable/disable/uninstall battery.
 //!
 //! Runs against a temp `ExtensionHost` with unpacked fixtures under
-//! `examples/plugins/*`. Does not start Electron or enable the hostile probe.
+//! `tests/fixtures/plugins/*`. Does not start Electron or enable the hostile probe.
 
 use std::path::{Path, PathBuf};
 
@@ -19,7 +19,7 @@ const HOSTILE_ID: &str = "dev.yaqmc.test.hostile";
 const NETWORK_ORIGIN: &str = "network:https://example.com";
 
 fn examples_plugins() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/plugins")
 }
 
 fn example(name: &str) -> PathBuf {

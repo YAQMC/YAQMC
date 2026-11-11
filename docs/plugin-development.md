@@ -1,9 +1,11 @@
 # Plugin development
 
-For a standalone, copyable starter with offline API documentation, run `npm run plugin:example:sync`.
-It exports `YAQMC-plugin-example` beside this repository. Edit its `main.js`, then run `npm run pack` inside
+Plugin sources, build commands and the copyable starter live in [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins). Run the plugin build commands below in that repository.
+
+Clone the plugin repository and copy `plugins/starter` for a standalone template with offline API documentation.
+Edit its `main.js`, then run `npm run pack` inside
 the exported folder. The [lyrics toolbar API](plugin-lyrics-api.md) demonstrates optional window controls.
-After changing plugin APIs, run the sync command and commit its generated SDK/docs; `docs:check` enforces this.
+Client API updates automatically refresh the companion SDK/docs mirror through the synchronization workflow.
 
 > [简体中文](zh-CN/plugin-development.md) | **English**
 
@@ -40,7 +42,7 @@ Ship it in a `*.yaqmc-plugin` zip with `manifest.json`.
 Developer Mode (Settings → Plugins, not on by default) is for authors: unpacked folders and extra validation. Do not
 enable it for ordinary users unless they are developing a plugin.
 
-Examples live in `examples/plugins/` and are **not** enabled by default. Packed downloads:
+Examples live in `yaqmc-plugins/plugins/` and are **not** enabled by default. Packed downloads:
 [example plugins](plugin-examples.md).
 
 ## Events and control
@@ -50,21 +52,21 @@ Read events: `track.changed`, `playback.stateChanged`, `playback.position`, `pla
 `scene.changed`, `settings.changed`, `ui.action`. Position is coalesced (~4 Hz). `player.control` operations go
 through `PlayerService` and inherit the session-safe seek mailbox. Plugin seeks are rate-limited (4/s).
 
-Build legacy examples with `npm run plugin:build`, validate with `npm run plugin:validate`, and pack with
-`npm run plugin:pack` (or `npm run plugins:pack` after a build).
+Build legacy examples with `npm run build`, validate with `npm run validate`, and pack with
+`npm run pack`.
 
 ## Provider Components
 
 Provider plugins target the frozen `yaqmc:provider@0.1.0` WIT package as a `wasm32-wasip2` `cdylib`. The manifest
 declares exactly one Component entrypoint, capability permissions, and a WIT world whose imports match those grants.
-Use the read-only [`provider-catalog-rust`](../examples/plugins/provider-catalog-rust/) example for the smallest
-starting point. The complete [`provider-platform-rust`](../examples/plugins/provider-platform-rust/) example shows
+Use the read-only [`provider-catalog-rust`](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/provider-catalog-rust/) example for the smallest
+starting point. The complete [`provider-platform-rust`](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/provider-platform-rust/) example shows
 catalog, playback, recommendations, Discover, lyrics, private storage, and an isolated synthetic account.
 
 ```text
 rustup target add wasm32-wasip2
-npm run plugin:pack:provider-example
-npm run plugin:verify:provider-platform-example
+npm run provider:catalog
+npm run provider:platform
 ```
 
 The complete example uses pinned guest dependencies and produces one architecture-neutral package. Playback returns

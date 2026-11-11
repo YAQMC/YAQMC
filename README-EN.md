@@ -230,3 +230,5 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 > YAQMC is licensed under [GPL-3.0-or-later](LICENSE). Binary releases include corresponding source as described in
 > the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md). Packaged AMLL components are
 > `AGPL-3.0-only`; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Plugin examples and offline API: [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins) · Website source: [YAQMC/yaqmc.github.io](https://github.com/YAQMC/yaqmc.github.io) · [Website](https://yaqmc.github.io/)

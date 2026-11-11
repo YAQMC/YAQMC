@@ -15,7 +15,7 @@ const ACTIONS_ID: &str = "dev.yaqmc.example.actions";
 
 fn example(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins")
+        .join("../../tests/fixtures/plugins")
         .join(name)
 }
 

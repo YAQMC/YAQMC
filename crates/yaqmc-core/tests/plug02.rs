@@ -21,7 +21,7 @@ const EXAMPLE_ORIGIN: &str = "https://example.com";
 const CRASH_LOOP_FAILURES: usize = 3;
 
 fn examples_plugins() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/plugins")
 }
 
 fn hostile_fixture() -> PathBuf {

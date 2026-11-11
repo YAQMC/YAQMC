@@ -1,18 +1,15 @@
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format, resolveConfig } from 'prettier';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const starterRoot = path.join(repositoryRoot, 'examples/plugins/starter');
 const check = process.argv.includes('--check');
 const outIndex = process.argv.indexOf('--out');
 if (outIndex >= 0 && !process.argv[outIndex + 1]) throw new Error('--out requires a directory');
 const externalRoot = path.resolve(
-  outIndex >= 0
-    ? process.argv[outIndex + 1]
-    : path.join(repositoryRoot, '..', 'YAQMC-plugin-example'),
+  outIndex >= 0 ? process.argv[outIndex + 1] : path.join(repositoryRoot, '..', 'yaqmc-plugins'),
 );
 const normalize = (value) => value.replaceAll('\r\n', '\n');
 const read = async (file) => normalize(await readFile(path.join(repositoryRoot, file), 'utf8'));
@@ -92,7 +89,7 @@ generated.set(
   [
     '# YAQMC 插件 API 参考',
     '',
-    '由 YAQMC 的 SDK 与公共文档生成。请在仓库执行 `npm run plugin:example:sync` 更新。',
+    '由 YAQMC 的 SDK 与公共文档生成。在客户端仓库执行 `npm run plugin:example:sync`，或在插件仓库执行 `npm run api:sync` 更新。',
     '',
     '| 接口 | 权限 |',
     '| --- | --- |',
@@ -130,13 +127,34 @@ generated.set(
   ].join('\n'),
 );
 
+const revision = (await import('node:child_process'))
+  .execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' })
+  .trim();
+const relativeTarget = path.relative(repositoryRoot, externalRoot);
+if (
+  !relativeTarget.startsWith('..' + path.sep) &&
+  relativeTarget !== '..' &&
+  !path.isAbsolute(relativeTarget)
+)
+  throw new Error('The API mirror must be outside the client repository');
+const outputs = new Map(
+  [...generated].map(([file, content]) => [path.join('plugins/starter', file), content]),
+);
+outputs.set('sdk/plugin/src/index.ts', sdk);
+outputs.set(
+  'wit/yaqmc-provider/yaqmc-provider.wit',
+  await read('wit/yaqmc-provider/yaqmc-provider.wit'),
+);
+outputs.set(
+  'UPSTREAM.json',
+  JSON.stringify({ repository: 'YAQMC/YAQMC', revision }, null, 2) + '\n',
+);
 const stale = [];
-for (const [file, raw] of generated) {
+for (const [file, raw] of outputs) {
   const content = /\.(md|ts|json)$/.test(file)
     ? await format(raw, { ...formatting, filepath: file })
     : raw;
-  generated.set(file, content);
-  const destination = path.join(starterRoot, file);
+  const destination = path.join(externalRoot, file);
   const current = (await exists(destination))
     ? normalize(await readFile(destination, 'utf8'))
     : null;
@@ -147,84 +165,5 @@ for (const [file, raw] of generated) {
     await writeFile(destination, content);
   }
 }
-if (stale.length)
-  throw new Error(
-    `Plugin API example is stale (${stale.join(', ')}). Run npm run plugin:example:sync and commit the generated files.`,
-  );
-if (check) {
-  process.stdout.write(`Plugin example API is synchronized (${generated.size} generated files).\n`);
-} else {
-  process.stdout.write(`Synchronized plugin example API (${generated.size} generated files).\n`);
-  const marker = path.join(externalRoot, '.yaqmc-example.json');
-  if (process.argv.includes('--export') || (await exists(marker))) await exportExample();
-}
-
-async function exportExample() {
-  const actualRepository = await realpath(repositoryRoot);
-  const actualParent = await realpath(path.dirname(externalRoot));
-  const actualTarget = (await exists(externalRoot))
-    ? await realpath(externalRoot)
-    : path.join(actualParent, path.basename(externalRoot));
-  const relative = path.relative(actualRepository, actualTarget);
-  if (
-    !relative ||
-    (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
-  )
-    throw new Error('Export the standalone example outside the YAQMC repository');
-  const expectedMarker = 'YAQMC plugin example v1';
-  let previous = { files: {} };
-  if (await exists(path.join(actualTarget, '.yaqmc-example.json'))) {
-    previous = JSON.parse(await readFile(path.join(actualTarget, '.yaqmc-example.json'), 'utf8'));
-    if (previous.kind !== expectedMarker) throw new Error('Unrecognized example export marker');
-  }
-  const files = new Map(generated);
-  await mkdir(actualTarget, { recursive: true });
-  for (const file of [
-    'manifest.json',
-    'main.js',
-    'package.json',
-    'jsconfig.json',
-    'pack.mjs',
-    'README.md',
-    'LICENSE',
-  ])
-    files.set(file, normalize(await readFile(path.join(starterRoot, file), 'utf8')));
-  const updates = [];
-  const nextHashes = { ...previous.files };
-  for (const [file, content] of files) {
-    const destination = path.join(actualTarget, file);
-    // Resolve existing ancestors to reject symlinks escaping the requested output directory.
-    let ancestor = destination;
-    while (!(await exists(ancestor))) ancestor = path.dirname(ancestor);
-    const resolvedAncestor = await realpath(ancestor);
-    const relativeAncestor = path.relative(actualTarget, resolvedAncestor);
-    if (
-      relativeAncestor === '..' ||
-      relativeAncestor.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativeAncestor)
-    )
-      throw new Error(`Export path escapes the example directory: ${file}`);
-    const current = (await exists(destination))
-      ? normalize(await readFile(destination, 'utf8'))
-      : null;
-    if (current !== null && current !== content && hash(current) !== previous.files[file]) {
-      // User plugin code belongs to the user. Still refresh the unmodified API docs.
-      if (file === 'main.js' || file === 'manifest.json') {
-        process.stdout.write(`Preserved edited plugin file: ${destination}\n`);
-        continue;
-      }
-      throw new Error(`Example export conflicts with an edited file: ${destination}`);
-    }
-    updates.push([destination, content]);
-    nextHashes[file] = hash(content);
-  }
-  for (const [destination, content] of updates) {
-    await mkdir(path.dirname(destination), { recursive: true });
-    await writeFile(destination, content);
-  }
-  await writeFile(
-    path.join(actualTarget, '.yaqmc-example.json'),
-    `${JSON.stringify({ kind: expectedMarker, files: nextHashes }, null, 2)}\n`,
-  );
-  process.stdout.write(`Exported standalone example to ${actualTarget}\n`);
-}
+if (stale.length) throw new Error('Plugin API mirror is stale: ' + stale.join(', '));
+process.stdout.write('Plugin SDK and offline API documents synchronized: ' + externalRoot + '\n');

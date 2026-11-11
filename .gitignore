@@ -25,10 +25,6 @@ GPT-Read-me.md
 /target/
 # Machine-local dependency overrides; never ship sibling checkout paths.
 /.cargo/config.toml
-examples/plugins/provider-catalog-rust/target/
-examples/plugins/provider-catalog-rust/component/provider.wasm
-examples/plugins/provider-platform-rust/target/
-examples/plugins/provider-platform-rust/component/provider.wasm
 crates/yaqmc-core/tests/fixtures/component-host-guest/target/
 
 # Staged Electron core binary (scripts/stage-core.mjs)
@@ -73,12 +69,6 @@ artifacts/acc03-windows-last.json
 /docs/release/qm-api-rs-provenance.md
 
 # Example plugin entrypoints (root `dist/` would hide plug01 fixtures)
-!examples/plugins/script-network/dist/
-!examples/plugins/script-network/dist/main.js
-!examples/plugins/script-actions/dist/
-!examples/plugins/script-actions/dist/main.js
-!examples/plugins/script-pages/dist/
-!examples/plugins/script-pages/dist/main.js
 
 # Editors
 .idea/
@@ -87,3 +77,6 @@ artifacts/acc03-windows-last.json
 
 # On-device frame measurements (device identity; not for commit)
 artifacts/android-perf/
+
+!tests/fixtures/plugins/**/dist/
+!tests/fixtures/plugins/**/dist/main.js

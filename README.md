@@ -291,3 +291,5 @@ OpenAI Codex 在工程实现、测试、审查、文档和发布流程中的协�
 > YAQMC 采用 [GPL-3.0-or-later](LICENSE) 许可证；二进制发布的对应源码按
 > [对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)提供。打包的 AMLL 组件采用
 > `AGPL-3.0-only`，具体边界见[第三方许可证](THIRD_PARTY_NOTICES.md)。
+
+插件示例与离线 API：[YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins) · 官网源码：[YAQMC/yaqmc.github.io](https://github.com/YAQMC/yaqmc.github.io) · [官网](https://yaqmc.github.io/)

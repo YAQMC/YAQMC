@@ -257,40 +257,6 @@ for (const requiredCommunityFile of [
   await requireFile(requiredCommunityFile);
 }
 
-for (const requiredSiteFile of [
-  'site/index.html',
-  'site/en/index.html',
-  'site/styles.css',
-  'assets/yaqmc-logo.png',
-]) {
-  await requireFile(requiredSiteFile);
-}
-
-const chineseSite = await readFile(path.join(repositoryRoot, 'site/index.html'), 'utf8');
-const englishSite = await readFile(path.join(repositoryRoot, 'site/en/index.html'), 'utf8');
-if (!chineseSite.includes('lang="zh-CN"') || !chineseSite.includes('href="en/"')) {
-  errors.push('site/index.html: missing Chinese language declaration or English switch');
-}
-if (!englishSite.includes('lang="en"') || !englishSite.includes('href="../"')) {
-  errors.push('site/en/index.html: missing English language declaration or Chinese switch');
-}
-if (
-  !chineseSite.includes('v0.1.0') ||
-  !englishSite.includes('v0.1.0') ||
-  !chineseSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
-  !englishSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
-  !chineseSite.includes('/releases/tag/v0.1.0') ||
-  !englishSite.includes('/releases/tag/v0.1.0') ||
-  chineseSite.includes('正在准备发布') ||
-  englishSite.includes('preparing for release') ||
-  chineseSite.includes('v0.1.0-beta.6') ||
-  englishSite.includes('v0.1.0-beta.6')
-) {
-  errors.push(
-    'site: must link the published unified v0.1.0 release without stale pre-release copy',
-  );
-}
-
 if (errors.length > 0) {
   process.stderr.write(`Public documentation validation failed (${errors.length}):\n`);
   for (const error of errors) process.stderr.write(`- ${error}\n`);

@@ -79,12 +79,12 @@ impl CredentialStore for RecordingCredentials {
 
 fn example_package() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin")
+        .join("../../tests/fixtures/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin")
 }
 
 fn platform_example_package() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin")
+        .join("../../tests/fixtures/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin")
 }
 
 fn provider_registry(root: &std::path::Path) -> Arc<ProviderRegistry> {

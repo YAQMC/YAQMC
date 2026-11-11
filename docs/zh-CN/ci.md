@@ -14,6 +14,8 @@
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
+插件开发和网站部署已迁入[独立仓库](companion-repositories.md)，客户端仓库只负责同步 API 镜像和演示使用的提交。
+
 ## 手动打包与下载
 
 推送代码后，打开 **Actions → Build artifacts → Run workflow**，选择分支，以及 `all`、

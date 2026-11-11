@@ -148,9 +148,9 @@ else
   while IFS= read -r -d '' path; do
     scan_file "$repo_root/$path" "$path" || failed=1
   done < <(git ls-files -z --cached --others --exclude-standard -- \
-    README.md README-EN.md docs tests/fixtures examples/plugins wit \
-    ':(exclude)examples/plugins/packages/**' \
-    ':(exclude)examples/plugins/**/component/**')
+    README.md README-EN.md docs tests/fixtures tests/fixtures/plugins wit \
+    ':(exclude)tests/fixtures/plugins/packages/**' \
+    ':(exclude)tests/fixtures/plugins/**/component/**')
 fi
 
 if [[ "$failed" -ne 0 ]]; then

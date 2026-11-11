@@ -44,3 +44,5 @@
 - [发布与合规记录](../release/README.md)
 
 验收记录会区分自动化检查、真实账号和真实设备证据。没有满足相应验收记录的项目不能写成“已验证”。
+
+- [Companion repositories / 独立插件与网站仓库](companion-repositories.md)

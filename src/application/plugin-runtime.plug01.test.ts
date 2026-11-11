@@ -38,7 +38,7 @@ vi.mock('./native-player-runtime', () => ({
   isNativeRuntime: true,
 }));
 
-const examplesRoot = join(dirname(fileURLToPath(import.meta.url)), '../../examples/plugins');
+const examplesRoot = join(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/plugins');
 
 function emptyResources() {
   return {

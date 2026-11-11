@@ -40,7 +40,7 @@ Distributions must retain the package's `LICENSE`, `LICENSES/Apache-2.0.txt`, an
 
 ## Rust Provider Component examples
 
-The optional, unsigned API v3 example packages under `examples/plugins/packages/` contain WebAssembly Components
+The optional, unsigned API v3 example packages in [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages) contain WebAssembly Components
 built from the checked-in Rust sources and lockfiles. They are not built into the YAQMC desktop executable. The
 complete platform example directly uses:
 

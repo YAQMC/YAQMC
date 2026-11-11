@@ -48,3 +48,5 @@ This directory contains the public user, tester, contributor, and release docume
 
 Acceptance records distinguish deterministic checks from real-account and real-device evidence. A pending gate must
 not be described as verified without the evidence required by its acceptance record.
+
+- [Companion repositories / 独立插件与网站仓库](companion-repositories.md)

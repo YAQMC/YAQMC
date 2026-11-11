@@ -781,8 +781,8 @@ npm run docs:check
 npm run ci:verify-workspace
 npm run ci:test-scripts
 npm run contracts:check
-npm run plugin:validate
-npm run plugin:verify:provider-platform-example
+npm run validate
+npm run provider:platform
 npm run typecheck --workspace @yaqmc/desktop
 npm run test --workspace @yaqmc/desktop
 npm run build --workspace @yaqmc/desktop

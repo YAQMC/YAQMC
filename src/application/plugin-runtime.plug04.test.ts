@@ -17,7 +17,7 @@ import {
   type LyricsSceneLayout,
 } from './lyrics-preset';
 
-const examplesRoot = join(dirname(fileURLToPath(import.meta.url)), '../../examples/plugins');
+const examplesRoot = join(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/plugins');
 const scenePackRoot = join(examplesRoot, 'scene-pack');
 
 type ScenePackManifest = {

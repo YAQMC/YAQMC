@@ -14,6 +14,8 @@ This page describes the desktop and Android GitHub Actions pipelines. Windows re
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
+Plugin development and website deployment have moved to [companion repositories](companion-repositories.md). This repository only synchronizes their API mirror and renderer revision.
+
 ## Manual artifact builds
 
 After pushing a commit, open **Actions → Build artifacts → Run workflow**, select the branch and

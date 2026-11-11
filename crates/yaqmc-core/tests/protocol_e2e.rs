@@ -430,7 +430,7 @@ async fn kill_core_during_playback_restores_queue_without_duplicates() {
 async fn graceful_shutdown_keeps_enabled_example_plugin() {
     let root = tempfile::tempdir().expect("plugin persist root");
     let sakura = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/plugins/style-sakura");
+        .join("../../tests/fixtures/plugins/style-sakura");
     assert!(
         sakura.join("manifest.json").is_file(),
         "missing example plugin at {}",

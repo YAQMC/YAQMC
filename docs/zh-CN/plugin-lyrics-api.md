@@ -43,6 +43,6 @@ ID 格式为 `[A-Za-z0-9][A-Za-z0-9._-]{0,39}`。标签长度为 1–40 个 Unic
 按钮跟随歌词控制栏显示，并可通过键盘焦点操作。Electron 窗口模式歌词页顶部 40 像素保留不可见拖动区，
 可见按钮排除在拖动区之外。全屏与 Android 不添加拖动区。
 
-运行 `npm run plugin:example:sync` 会在仓库旁的 `YAQMC-plugin-example` 创建可直接复制的独立示例，
+独立示例位于 [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/starter)，
 包含可用的窗口按钮插件、无第三方依赖的打包器、SDK 类型与离线 API 文档。另见
 [插件开发](plugin-development.md)和[插件安全](plugin-security.md)。
