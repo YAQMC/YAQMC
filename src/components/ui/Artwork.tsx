@@ -1,4 +1,4 @@
-import { useContext, type CSSProperties, type ReactNode } from 'react';
+import { useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Artwork as ArtworkModel } from '../../domain/music';
 import { resolveArtworkSource, type ArtworkPurpose } from '../../application/artwork-resolver';
 import { useSafeArtworkSource } from '../../application/artwork-source';
@@ -28,19 +28,21 @@ export function Artwork({
     provider:
       provider ?? (active ? { providerId: active.id, profileId: active.profileId } : undefined),
   });
+  const [failedSource, setFailedSource] = useState<string | null>(null);
 
   return (
     <span
       className={`artwork ${className}`.trim()}
       style={{ '--artwork-color': artwork.dominantColor } as CSSProperties}
     >
-      {source ? (
+      {source && source !== failedSource ? (
         <img
           src={source}
           alt={artwork.alt}
           loading={loading}
           draggable={false}
           referrerPolicy="no-referrer"
+          onError={() => setFailedSource(source)}
         />
       ) : (
         fallback

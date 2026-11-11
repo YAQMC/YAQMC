@@ -34,6 +34,7 @@
 - [插件平台](plugin-platform.md)、[清单](plugin-manifest.md)、[Provider Component API](provider-component-api.md)、
   [安全](plugin-security.md)和[开发](plugin-development.md)
 - [示例插件](plugin-examples.md)、[样式 API](plugin-style-api.md)和[场景 API](plugin-scene-api.md)
+- [插件页面与布局](plugin-pages-api.md)和[歌词工具栏按钮](plugin-lyrics-api.md)
 
 ## 测试与发布
 

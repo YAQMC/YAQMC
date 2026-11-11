@@ -101,6 +101,17 @@ describe('LyricsPanel', () => {
     expect(container.querySelector('.amll-lyric-player.dom')).toBeInTheDocument();
   });
 
+  it('keeps an invisible desktop drag strip when controls hide and removes it in fullscreen', () => {
+    useLyricsStore.setState({ document: unsynchronizedDocument(), status: 'ready' });
+    vi.useFakeTimers();
+    const { container, rerender } = render(<LyricsPanel {...props()} />);
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(container.querySelector('.lyrics-stage__topbar')).toHaveAttribute('data-hidden');
+    expect(container.querySelector('.lyrics-stage__drag-region')).toHaveClass('yaqmc-drag');
+    rerender(<LyricsPanel {...props({ fullscreen: true })} />);
+    expect(container.querySelector('.lyrics-stage__drag-region')).not.toBeInTheDocument();
+  });
+
   it('settles portrait resource loading instead of restarting it after every internal render', async () => {
     useLyricsStore.setState({ document: unsynchronizedDocument(), status: 'ready' });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (

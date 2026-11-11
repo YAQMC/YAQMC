@@ -12,6 +12,10 @@
 
 专辑封面优先于榜单横幅或无关 MV 图。QQ 提供器负责 URL 构造，页面组件不能自行拼 CDN 地址。
 
+账号歌单的仅歌曲响应可能将 `dirinfo.title` 和 `dirinfo.picurl` 留空，即使歌单设有自定义封面。
+此时保留用户选中歌单摘要中的封面；详情返回有效新封面时则优先使用新值。旧版缓存的详情页也会从当前摘要
+修复封面，不额外请求歌曲。缺少封面时使用宿主占位样式；图片加载失败时移除破损图片，不依赖开发样例资源。
+
 ## 在线只读核验
 
 2026-08-14 使用公开目录和图片响应核验，不携带账号凭据。G.E.M.《新的心跳》的专辑 MID
@@ -21,5 +25,11 @@
 
 ## 缓存与安全
 
-每个选择后的变体使用自己的 URL 派生缓存键。原生缓存有容量上限并验证图片 MIME；远程封面只接受精确
-HTTPS host `y.gtimg.cn` 与 `qpic.y.qq.com`，请求不附带账号凭据。
+每个选择后的变体使用自己的 URL 派生缓存键。原生缓存有容量上限并验证图片 MIME。允许的精确 HTTPS host
+包括 `y.gtimg.cn`、`qpic.y.qq.com`、`music-file.y.qq.com`、`q.qlogo.cn`、`thirdwx.qlogo.cn` 和
+`thirdqq.qlogo.cn`；`y.qq.com` 仅接受 `/m/resource/calendar/` 与 `/music/common/upload/` 路径。
+图片请求不附带账号凭据。
+
+2026-11-11 使用公开读取复现：`onlysonglist=1` 返回空标题和封面，同一歌单的完整元数据响应则返回
+`music-file.y.qq.com/songlist/` 自定义封面，该图片实际返回 HTTP 200、`image/jpeg`。
+此次故障来自元数据被空值覆盖，不是缺少 CDN 权限。

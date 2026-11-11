@@ -5,6 +5,10 @@
 These are **unsigned local examples**. They are not built-in YAQMC features and are not enabled by default.
 Install from Settings → Plugins → Choose file. There is no marketplace.
 
+For a copyable standalone starting point, run `npm run plugin:example:sync`. It exports
+`YAQMC-plugin-example` beside the repository, including offline API docs, SDK types and a zero-dependency packer.
+The starter adds optional lyrics window buttons via the [lyrics toolbar API](plugin-lyrics-api.md).
+
 Source lives in `examples/plugins/`. Packed `*.yaqmc-plugin` files are in
 [`examples/plugins/packages/`](../examples/plugins/packages/). Rebuild them with `npm run plugins:pack`.
 The Rust Provider Components have separate reproducible targets. Use `npm run plugin:pack:provider-example` for the

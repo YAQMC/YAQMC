@@ -37,6 +37,7 @@ This directory contains the public user, tester, contributor, and release docume
 - [Example plugins](plugin-examples.md), [style API](plugin-style-api.md), and
   [scene API](plugin-scene-api.md)
 - [Plugins page and plugin store](plugin-store.md)
+- [Plugin pages and layouts](plugin-pages-api.md) and [lyrics toolbar buttons](plugin-lyrics-api.md)
 
 ## Testing and release
 

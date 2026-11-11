@@ -33,6 +33,11 @@ import {
   registerPluginPlayerBarAction,
   registerPluginSidebarAction,
   registerPluginTrackAction,
+  registerPluginLyricsAction,
+  unregisterPluginLyricsAction,
+  isPluginLyricsMethod,
+  validatePluginLyricsPayload,
+  type PluginLyricsContribution,
 } from './plugin-ui';
 import { applyPluginPageCall, isPluginPageMethod, validatePluginPagePayload } from './plugin-pages';
 
@@ -523,6 +528,10 @@ var ctx = {
     set: function (values) { return __yaqmcCall('settings.set', { values: values || {} }); }
   },
   ui: {
+    lyrics: {
+      register: function (action) { return __yaqmcCall('ui.lyrics.register', action || {}); },
+      unregister: function (id) { return __yaqmcCall('ui.lyrics.unregister', { id: String(id || '') }); }
+    },
     contextMenu: { track: { register: function (action) { return __yaqmcCall('ui.contextMenu.track.register', action || {}); } } },
     playerBar: { register: function (action) { return __yaqmcCall('ui.playerBar.register', action || {}); } },
     sidebar: { register: function (action) { return __yaqmcCall('ui.sidebar.register', action || {}); } },
@@ -767,6 +776,20 @@ function applyBridgeSideEffect(
   const result = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   if (result.ok !== true) return;
   const pluginName = script.pluginName ?? script.pluginId;
+  if (isPluginLyricsMethod(method)) {
+    const action = payload as PluginLyricsContribution;
+    if (method === 'ui.lyrics.unregister') unregisterPluginLyricsAction(script.pluginId, action.id);
+    else
+      registerPluginLyricsAction({
+        id: action.id,
+        label: action.label,
+        icon: action.icon,
+        windowAction: action.windowAction,
+        pluginId: script.pluginId,
+        pluginName,
+      });
+    return;
+  }
   if (method === 'ui.contextMenu.track.register') {
     const action = asUiAction(script.pluginId, pluginName, payload);
     if (action) registerPluginTrackAction(action);
@@ -947,7 +970,9 @@ async function startScripts(
         if (!boundToken) return;
         const invalid = isPluginPageMethod(data.method)
           ? validatePluginPagePayload(data.method, data.payload ?? {})
-          : null;
+          : isPluginLyricsMethod(data.method)
+            ? validatePluginLyricsPayload(data.method, data.payload)
+            : null;
         if (invalid) {
           worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: false, error: invalid });
           return;

@@ -1,5 +1,10 @@
 # Plugin development
 
+For a standalone, copyable starter with offline API documentation, run `npm run plugin:example:sync`.
+It exports `YAQMC-plugin-example` beside this repository. Edit its `main.js`, then run `npm run pack` inside
+the exported folder. The [lyrics toolbar API](plugin-lyrics-api.md) demonstrates optional window controls.
+After changing plugin APIs, run the sync command and commit its generated SDK/docs; `docs:check` enforces this.
+
 > [简体中文](zh-CN/plugin-development.md) | **English**
 
 Legacy API v1-v2 plugins are written in TypeScript against `@yaqmc/plugin-sdk` (`sdk/plugin`) and built to JavaScript.

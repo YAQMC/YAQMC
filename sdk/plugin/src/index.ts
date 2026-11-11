@@ -94,6 +94,7 @@ export type PluginPermission =
   | 'ui.pages'
   | 'ui.navigation'
   | 'ui.layout'
+  | 'ui.lyrics'
   | `network:https://${string}`;
 
 /** Reserved capabilities. Raw fetch, filesystem, and account credentials stay denied. */
@@ -241,6 +242,17 @@ export interface PluginUiAction {
   icon?: string;
 }
 
+/** API v4. A window action runs in the host only after the user presses its button. */
+export interface PluginLyricsAction extends PluginUiAction {
+  icon?: 'minus' | 'maximize' | 'close' | 'settings' | 'info' | 'music';
+  windowAction?: 'minimize' | 'toggleMaximize' | 'close';
+}
+
+export interface PluginLyricsActionEvent {
+  id: string;
+  slot: 'lyrics';
+}
+
 export interface PluginNotifyOptions {
   level?: 'info' | 'success' | 'warning' | 'error';
   message: string;
@@ -310,6 +322,11 @@ export interface PluginContext {
     set(values: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
   ui: {
+    /** API v4, `ui.lyrics`. Up to 4 actions per plugin, 12 in total. */
+    lyrics: {
+      register(action: PluginLyricsAction): Promise<{ ok: true }>;
+      unregister(id: string): Promise<{ ok: true }>;
+    };
     contextMenu: { track: { register(action: PluginUiAction): Promise<{ ok: true }> } };
     playerBar: { register(action: PluginUiAction): Promise<{ ok: true }> };
     sidebar: { register(action: PluginUiAction): Promise<{ ok: true }> };

@@ -9,7 +9,7 @@ use qqmusic_api::account::{
 };
 
 use super::{
-    artwork::{artwork_from_provider_url, is_allowed_artwork_url},
+    artwork::{artwork_from_provider_url, is_allowed_artwork_url, merge_playlist_artwork},
     auth::{AuthenticatedAccountContext, QQMusicAuthService},
     cache::{
         AccountCache, AccountEpoch, AccountLibraryProjection, CachedAccountPage,
@@ -2181,6 +2181,7 @@ impl QQMusicAccountService {
             if summary.title.trim().is_empty() {
                 summary.title = projected.title;
             }
+            merge_playlist_artwork(&mut summary.artwork, &projected.artwork, &summary.title);
         } else if summary.id != playlist_id {
             tracing::warn!(
                 target: "qqmusic.playlist",
@@ -2681,7 +2682,16 @@ impl QQMusicAccountService {
             &playlist_id,
             cursor.as_deref(),
         );
-        let cached = self.cached_detail_page(&key)?;
+        let mut cached = self.cached_detail_page(&key)?;
+        // Repair old cached tracks-only summaries using the current list metadata. This also
+        // applies when an offline read returns stale data, without an extra network request.
+        if let Some(page) = cached.as_mut() {
+            merge_playlist_artwork(
+                &mut page.summary.artwork,
+                &requested_summary.artwork,
+                &page.summary.title,
+            );
+        }
         if let Some(cached) = cached
             .as_ref()
             .filter(|page| page.terminal && page.expires_at_ms > self.clock.now_ms())
@@ -2799,6 +2809,11 @@ impl QQMusicAccountService {
                 if summary.title.trim().is_empty() {
                     summary.title = requested_summary.title.clone();
                 }
+                merge_playlist_artwork(
+                    &mut summary.artwork,
+                    &requested_summary.artwork,
+                    &summary.title,
+                );
                 if summary.description.trim().is_empty() {
                     summary.description = requested_summary.description.clone();
                 }
@@ -5484,6 +5499,62 @@ mod tests {
         assert_eq!(recent.items.len(), 2);
         assert!(recent.items.iter().all(|item| item.song.is_favorite));
         assert_eq!(fixture.transport.call_count(), 5);
+    }
+
+    #[tokio::test]
+    async fn tracks_only_playlist_detail_preserves_custom_cover_and_repairs_old_cache() {
+        let mut owned = normalize_playlist_fixture(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned summary");
+        owned.artwork = artwork_from_provider_url(
+            "https://music-file.y.qq.com/songlist/u/synthetic-custom.jpg?imageView2/4/w/600/h/600",
+            &owned.title,
+            "#102030".into(),
+        );
+        let mut response: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .unwrap();
+        response["req"]["data"]["dirinfo"]["dirName"] = json!("");
+        response["req"]["data"]["dirinfo"]["picUrl"] = json!("");
+        let fixture = AccountServiceFixture::authenticated([TestReply::Body(
+            serde_json::to_vec(&response).unwrap(),
+        )])
+        .await;
+        let detail = fixture
+            .service
+            .playlist_tracks(owned.clone(), None, 50)
+            .await
+            .unwrap();
+        assert_eq!(detail.summary.title, owned.title);
+        assert_eq!(detail.summary.artwork.src, owned.artwork.src);
+        assert_eq!(detail.summary.artwork.alt, owned.artwork.alt);
+        assert!(detail.summary.artwork.variants.is_empty());
+        assert_eq!(detail.tracks.items.len(), 2);
+
+        let context = fixture.auth.capture_account_context().await.unwrap();
+        let key = AccountCache::playlist_tracks_key(&context.epoch.scope, &owned.id, None);
+        let mut cached: CachedPlaylistDetailPage =
+            fixture.storage.get_json(&key, true).unwrap().unwrap();
+        cached.summary.artwork.src = "/artwork/stillness.svg".into();
+        cached.summary.artwork.alt = "Cover for ".into();
+        fixture
+            .storage
+            .put_json(&key, ACCOUNT_CACHE_KIND, &cached, cached.expires_at_ms)
+            .unwrap();
+        let repaired = fixture
+            .service
+            .playlist_tracks(owned.clone(), None, 50)
+            .await
+            .unwrap();
+        assert_eq!(repaired.summary.artwork.src, owned.artwork.src);
+        assert_eq!(repaired.summary.artwork.alt, owned.artwork.alt);
+        assert_eq!(
+            fixture.transport.call_count(),
+            1,
+            "repair reuses cached songs"
+        );
     }
 
     #[tokio::test]

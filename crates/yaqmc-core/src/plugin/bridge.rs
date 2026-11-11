@@ -13,6 +13,7 @@ fn is_page_ui_method(method: &str) -> bool {
     method.starts_with("ui.pages.")
         || method.starts_with("ui.navigation.")
         || method.starts_with("ui.layout.")
+        || method.starts_with("ui.lyrics.")
 }
 
 pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, String> {
@@ -37,6 +38,7 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
             Ok(Some(PluginPermission::UiNavigation))
         }
         "ui.layout.set" | "ui.layout.clear" => Ok(Some(PluginPermission::UiLayout)),
+        "ui.lyrics.register" | "ui.lyrics.unregister" => Ok(Some(PluginPermission::UiLyrics)),
         "network.request" => Ok(Some(PluginPermission::Network)),
         "scenes.onMount"
         | "scenes.onUnmount"
@@ -55,6 +57,57 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
         | "network.fetch" => Err("this capability is not available to plugins".into()),
         _ => Err("unknown plugin API method".into()),
     }
+}
+
+fn validate_lyrics_action(method: &str, payload: &Value) -> Result<(), String> {
+    let invalid = || "invalid-lyrics-action".to_owned();
+    let object = payload.as_object().ok_or_else(invalid)?;
+    let unregister = method == "ui.lyrics.unregister";
+    let fields: &[&str] = if unregister {
+        &["id"]
+    } else {
+        &["id", "label", "icon", "windowAction"]
+    };
+    if object.keys().any(|key| !fields.contains(&key.as_str())) {
+        return Err(invalid());
+    }
+    let id = payload
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid)?;
+    if id.is_empty()
+        || id.len() > 40
+        || !id.as_bytes()[0].is_ascii_alphanumeric()
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+    {
+        return Err(invalid());
+    }
+    if unregister {
+        return Ok(());
+    }
+    let label = payload
+        .get("label")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid)?;
+    if label.trim().is_empty() || label.chars().count() > 40 {
+        return Err(invalid());
+    }
+    for (field, allowed) in [
+        (
+            "icon",
+            &["minus", "maximize", "close", "settings", "info", "music"][..],
+        ),
+        ("windowAction", &["minimize", "toggleMaximize", "close"][..]),
+    ] {
+        if let Some(value) = payload.get(field) {
+            if !value.as_str().is_some_and(|value| allowed.contains(&value)) {
+                return Err(invalid());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn dispatch_bridge(
@@ -306,6 +359,10 @@ async fn dispatch_active_bridge(
             host.settings_set(&runtime.plugin_id, patch)
                 .map_err(|error| error.to_string())
         }
+        "ui.lyrics.register" | "ui.lyrics.unregister" => {
+            validate_lyrics_action(&request.method, &request.payload)?;
+            Ok(json!({ "ok": true, "pluginId": runtime.plugin_id }))
+        }
         "ui.contextMenu.track.register"
         | "ui.playerBar.register"
         | "ui.sidebar.register"
@@ -398,6 +455,8 @@ mod tests {
             ("ui.navigation.unregister", PluginPermission::UiNavigation),
             ("ui.layout.set", PluginPermission::UiLayout),
             ("ui.layout.clear", PluginPermission::UiLayout),
+            ("ui.lyrics.register", PluginPermission::UiLyrics),
+            ("ui.lyrics.unregister", PluginPermission::UiLyrics),
         ] {
             assert_eq!(
                 required_permission(method).unwrap(),
@@ -416,6 +475,32 @@ mod tests {
             assert!(required_permission(method).is_err(), "{method}");
         }
         assert!(!is_page_ui_method("ui.sidebar.register"));
+    }
+
+    #[test]
+    fn lyrics_actions_accept_only_declarative_user_gesture_commands() {
+        assert!(validate_lyrics_action(
+            "ui.lyrics.register",
+            &json!({
+                "id": "minimize", "label": "最小化", "windowAction": "minimize"
+            })
+        )
+        .is_ok());
+        assert!(validate_lyrics_action("ui.lyrics.unregister", &json!({"id": "minimize"})).is_ok());
+        for payload in [
+            json!({"id": "bad/id", "label": "bad"}),
+            json!({"id": "ok", "label": " "}),
+            json!({"id": "ok", "label": "bad", "windowAction": "shell.open"}),
+            json!({"id": "ok", "label": "bad", "icon": "https://example.com/icon.svg"}),
+            json!({"id": "ok", "label": "bad", "pluginId": "another.plugin"}),
+        ] {
+            assert_eq!(
+                validate_lyrics_action("ui.lyrics.register", &payload),
+                Err("invalid-lyrics-action".into())
+            );
+        }
+        assert!(required_permission("window.close").is_err());
+        assert!(required_permission("ui.lyrics.click").is_err());
     }
 
     #[test]

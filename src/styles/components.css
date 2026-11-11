@@ -1783,9 +1783,16 @@ input[type='range']:disabled {
   white-space: nowrap;
 }
 
+.lyrics-stage__drag-region {
+  position: absolute;
+  z-index: 6;
+  inset: 0 0 auto;
+  height: 40px;
+}
+
 .lyrics-stage__topbar {
   position: absolute;
-  z-index: 5;
+  z-index: 7;
   top: 0;
   right: 0;
   left: 0;
@@ -1794,7 +1801,17 @@ input[type='range']:disabled {
   justify-content: flex-end;
   gap: 4px;
   padding: 10px 14px;
+  flex-wrap: wrap;
   transition: opacity 320ms var(--ease-out);
+  pointer-events: none;
+}
+
+.lyrics-stage__topbar > button {
+  pointer-events: auto;
+}
+
+.lyrics-stage__topbar[data-hidden] > button {
+  pointer-events: none;
 }
 
 .lyrics-stage[data-fullscreen] .lyrics-stage__topbar {
@@ -1805,6 +1822,14 @@ input[type='range']:disabled {
 .lyrics-stage__topbar[data-hidden] {
   opacity: 0;
   pointer-events: none;
+}
+
+.lyrics-stage__topbar[data-hidden]:focus-within {
+  opacity: 1;
+}
+
+.lyrics-stage__topbar[data-hidden]:focus-within > button {
+  pointer-events: auto;
 }
 
 .lyrics-stage__topbar .icon-button,

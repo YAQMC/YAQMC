@@ -57,6 +57,8 @@ import { LyricsScene } from './lyrics-scene';
 import type { LyricsSceneBindings } from './lyrics-scene';
 import { CommentDanmaku } from './CommentDanmaku';
 import { sceneForOrientation } from '../application/lyrics-scene-layout';
+import { getHostBridge } from '../application/yaqmc-runtime';
+import { PluginLyricsActions } from './PluginLyricsActions';
 
 type LyricsStyle = CSSProperties & {
   '--lyrics-color': string;
@@ -476,6 +478,9 @@ function LyricsPanelStage({
       data-image-fit={appearance.imageFit}
       data-song-id={currentTrackId ?? undefined}
     >
+      {!fullscreen && getHostBridge().kind === 'electron' && (
+        <div className="lyrics-stage__drag-region yaqmc-drag" aria-hidden="true" />
+      )}
       {floatingTransport && (
         <LyricsFullscreenTransport
           ref={transportRef}
@@ -504,7 +509,9 @@ function LyricsPanelStage({
       <CommentDanmaku key={currentTrackId} document={document} />
 
       <div className="lyrics-stage__topbar" data-hidden={(!compact && controlsHidden) || undefined}>
+        <PluginLyricsActions />
         <IconButton
+          className="yaqmc-no-drag"
           label={nextCoverLabel}
           size="large"
           onClick={() => selectLyricsPreset(nextPreset.id)}

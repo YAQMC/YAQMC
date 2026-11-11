@@ -22,6 +22,7 @@ pub enum PluginPermission {
     UiPages,
     UiNavigation,
     UiLayout,
+    UiLyrics,
     Network,
     ProviderCatalog,
     ProviderPlayback,
@@ -57,6 +58,7 @@ pub const V4_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::UiPages,
     PluginPermission::UiNavigation,
     PluginPermission::UiLayout,
+    PluginPermission::UiLyrics,
 ];
 
 pub const V3_PERMISSIONS: &[PluginPermission] = &[
@@ -109,6 +111,7 @@ impl PluginPermission {
             Self::UiPages => "ui.pages",
             Self::UiNavigation => "ui.navigation",
             Self::UiLayout => "ui.layout",
+            Self::UiLyrics => "ui.lyrics",
             Self::Network => "network",
             Self::ProviderCatalog => "provider.catalog",
             Self::ProviderPlayback => "provider.playback",
@@ -138,6 +141,7 @@ impl PluginPermission {
             Self::UiPages => "Add plugin pages",
             Self::UiNavigation => "Add navigation entries for its pages",
             Self::UiLayout => "Rearrange supported YAQMC page sections",
+            Self::UiLyrics => "Add lyrics toolbar actions and window buttons",
             Self::Network => "Scoped HTTPS network access",
             Self::ProviderCatalog => "Provide catalog and discovery data",
             Self::ProviderPlayback => "Resolve playable sources",
@@ -384,6 +388,7 @@ mod tests {
             ("ui.pages", PluginPermission::UiPages),
             ("ui.navigation", PluginPermission::UiNavigation),
             ("ui.layout", PluginPermission::UiLayout),
+            ("ui.lyrics", PluginPermission::UiLyrics),
         ] {
             assert_eq!(parse_permission(name).unwrap(), (permission, None));
             assert!(permission_allowed_for_api(permission, 4));

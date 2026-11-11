@@ -465,7 +465,8 @@ export const enUS = {
     trackMembership: 'VIP track',
     trackPurchase: 'Paid album',
     trackCopyright: 'Licensing restriction',
-    errorNetwork: 'The track could not be loaded from the network.',
+    errorNetwork:
+      'Media download failed, possibly due to a connection or media server error. Check your connection, change quality, or try again later.',
     errorOutput: 'No usable audio output device is available.',
     errorDecoder: 'This audio format is not supported by the native player.',
     errorEntitlement: 'The active account is not entitled to this track or quality.',
@@ -1201,6 +1202,7 @@ export const enUS = {
         ui_pages: 'Add plugin pages',
         ui_navigation: 'Add navigation entries for its pages',
         ui_layout: 'Rearrange supported YAQMC page sections',
+        ui_lyrics: 'Add lyrics toolbar actions and window buttons',
         network_origin: 'HTTPS network: {{origin}}',
         provider_catalog: 'Provide catalog and discovery data',
         provider_playback: 'Resolve playable sources',

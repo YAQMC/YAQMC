@@ -5,7 +5,17 @@ pub(super) use qqmusic_api::artwork::{
     is_allowed_url as is_allowed_artwork_url, normalize_url as normalize_provider_artwork_url,
 };
 
-const FALLBACK_ARTWORK: &str = "/artwork/stillness.svg";
+// Missing artwork is rendered by the host. Fixture assets are absent from release bundles.
+const FALLBACK_ARTWORK: &str = "";
+
+pub(super) fn merge_playlist_artwork(artwork: &mut Artwork, known: &Artwork, title: &str) {
+    // Tracks-only responses deliberately omit playlist metadata. Preserve the list's cover,
+    // but let an explicit, valid detail cover replace it (for example after a user edits it).
+    if !is_allowed_artwork_url(&artwork.src) && is_allowed_artwork_url(&known.src) {
+        *artwork = known.clone();
+    }
+    artwork.alt = format!("Cover for {}", clean_text(title));
+}
 
 pub(super) fn artwork_for_album(mid: &str, title: &str) -> Artwork {
     let source = qqmusic_api::artwork::album(mid);
@@ -101,6 +111,23 @@ fn card_cover_url(card: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_playlist_cover_replaces_the_list_cover_and_missing_artwork_has_no_fixture_url() {
+        let known =
+            artwork_from_provider_url("https://qpic.y.qq.com/old.jpg", "Old", "#102030".into());
+        let mut current = artwork_from_provider_url(
+            "https://music-file.y.qq.com/songlist/new.jpg",
+            "",
+            "#405060".into(),
+        );
+        merge_playlist_artwork(&mut current, &known, "New &amp; title");
+        assert_eq!(current.src, "https://music-file.y.qq.com/songlist/new.jpg");
+        assert_eq!(current.alt, "Cover for New & title");
+        let missing = artwork_from_provider_url("", "Missing", "#102030".into());
+        assert!(missing.src.is_empty());
+        assert!(missing.variants.is_empty());
+    }
 
     #[test]
     fn album_artwork_exposes_only_verified_sizes() {

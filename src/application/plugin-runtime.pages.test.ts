@@ -6,6 +6,7 @@ import {
   usePluginHost,
 } from './plugin-runtime';
 import { clearPluginPageContributions, pageKey, pluginPageSnapshot } from './plugin-pages';
+import { clearPluginUi, pluginLyricsActions } from './plugin-ui';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const handlers = vi.hoisted(() => new Map<string, (payload: never) => void>());
@@ -108,6 +109,7 @@ describe('plugin API v4 runtime bridge', () => {
     vi.unstubAllGlobals();
     invokeMock.mockReset();
     clearPluginPageContributions();
+    clearPluginUi();
   });
 
   async function start() {
@@ -126,6 +128,34 @@ describe('plugin API v4 runtime bridge', () => {
       pluginName: 'Pages',
       blocks: [{ type: 'divider' }],
     });
+    unmount();
+  });
+
+  it('authorizes lyrics controls before registration and rejects unknown commands before IPC', async () => {
+    allowed[OWNER] = ['ui.lyrics.register', 'ui.lyrics.unregister'];
+    const { owner, other, unmount } = await start();
+    call(other, 'denied', 'ui.lyrics.register', {
+      id: 'min',
+      label: 'Min',
+      windowAction: 'minimize',
+    });
+    await waitFor(() => expect(result(other, 'denied')).toMatchObject({ ok: false }));
+    expect(pluginLyricsActions()).toHaveLength(0);
+    call(owner, 'bad', 'ui.lyrics.register', {
+      id: 'bad',
+      label: 'Bad',
+      windowAction: 'shell.open',
+    });
+    await waitFor(() =>
+      expect(result(owner, 'bad')).toMatchObject({ ok: false, error: 'invalid-lyrics-action' }),
+    );
+    expect(bridgeCalls('ui.lyrics.register')).toBe(1);
+    call(owner, 'add', 'ui.lyrics.register', { id: 'min', label: 'Min', windowAction: 'minimize' });
+    await waitFor(() => expect(result(owner, 'add')).toMatchObject({ ok: true }));
+    expect(pluginLyricsActions()).toMatchObject([{ pluginId: OWNER, windowAction: 'minimize' }]);
+    call(owner, 'remove', 'ui.lyrics.unregister', { id: 'min' });
+    await waitFor(() => expect(result(owner, 'remove')).toMatchObject({ ok: true }));
+    expect(pluginLyricsActions()).toHaveLength(0);
     unmount();
   });
 

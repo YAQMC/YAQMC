@@ -1,5 +1,8 @@
 # 示例插件
 
+运行 `npm run plugin:example:sync` 可在仓库旁创建可直接复制的 `YAQMC-plugin-example`，包含离线 API 文档、
+SDK 类型和无第三方依赖的打包器。示例通过[歌词工具栏 API](plugin-lyrics-api.md)添加可选的歌词页窗口按钮。
+
 > **简体中文** | [English](../plugin-examples.md)
 
 这些是**未签名的本地示例**，不是 YAQMC 内置功能，默认不启用。在 设置 → 插件 → 选择文件 中安装。没有插件市场。

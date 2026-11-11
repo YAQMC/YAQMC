@@ -18,10 +18,16 @@ async fn first_install_validation_allows_declarative_ui_but_blocks_player_contro
     assert!(host.record(id).is_err());
     let mut inspection = style_inspection(id);
     inspection.manifest.api_version = 4;
-    inspection.manifest.permissions = ["ui.pages", "ui.navigation", "ui.layout", "player.control"]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
+    inspection.manifest.permissions = [
+        "ui.pages",
+        "ui.navigation",
+        "ui.layout",
+        "ui.lyrics",
+        "player.control",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
     inspection.manifest.entrypoints.script = Some("dist/main.js".into());
     inspection.manifest.validate().unwrap();
     inspection.files[0].bytes = serde_json::to_vec(&inspection.manifest).unwrap();
@@ -73,6 +79,11 @@ async fn first_install_validation_allows_declarative_ui_but_blocks_player_contro
         ("ui.layout.clear", json!({"target":"home"})),
         ("ui.navigation.unregister", json!({"id":"nav"})),
         ("ui.pages.unregister", json!({"pageId":"page"})),
+        (
+            "ui.lyrics.register",
+            json!({"id":"min", "label":"Minimize", "windowAction":"minimize"}),
+        ),
+        ("ui.lyrics.unregister", json!({"id":"min"})),
     ] {
         let response = dispatch_bridge(
             &host,

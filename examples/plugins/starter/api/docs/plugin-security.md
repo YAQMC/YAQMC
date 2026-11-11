@@ -1,0 +1,69 @@
+# Plugin security
+
+> [简体中文](zh-CN/plugin-security.md) | **English**
+
+Runtime plugins are untrusted. The static scanner is **supplemental**. The security boundary is isolated execution,
+a permission-checked bridge, package jail, and host-proxied network. Raw `fetch` stays denied.
+
+## Isolation
+
+Third-party script does **not** run in the main YAQMC renderer. Each script plugin gets a dedicated worker built from
+YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no legacy-host globals, no raw IPC,
+and no raw `fetch`. All privileged work goes through `plugin_bridge` with a host-bound runtime token. Plugin-supplied
+`pluginId` is not authorization. The application CSP allows `worker-src 'self' blob:` so Chromium can construct that
+blob worker; Worker construction failure marks the plugin Failed.
+
+CSS and Scene Schema never execute JavaScript. Scene CSS is scoped to `[data-yaqmc-plugin-scene]`. Global styles may
+only target the documented `data-yaqmc` / `--yaqmc-*` API.
+
+The optional plugin background API is also isolated: `scene.register` permits a plugin to receive one host-owned
+`OffscreenCanvas` for its active scene. The canvas is transferred to the Worker once; the host controls its bounds,
+z-order and accessibility, and sends only bounded artwork/playback state updates. Plugins do not receive a DOM node,
+raw audio, cookies or arbitrary renderer IPC.
+
+## Permissions
+
+Granted only after review:
+
+`track.read`, `lyrics.read`, `player.read`, `player.control`, `theme.read`, `plugin.storage`, `scene.register`,
+`style.register`, plus v2 `ui.contextMenu`, `ui.playerBar`, `ui.sidebar`, `ui.notify`, and scoped
+`network:https://host`, plus v4 `ui.pages`, `ui.navigation`, and `ui.layout`. API v4 pages are block documents
+rendered by YAQMC components; plugins never inject markup, styles, images or URLs into those surfaces
+(see the [Plugin Pages API](plugin-pages-api.md)).
+
+API v2/v3/v4 also accept `ui.songBadges` for bounded declarative text badges;
+it grants no code execution or network access.
+
+For legacy API v1-v2, bare `provider` and `account` remain reserved and denied. API v3 uses only the explicit
+`provider.catalog`, `provider.playback`, `provider.recommendation`, `provider.lyrics`, and `provider.account`
+capabilities declared by a manifest v2 Component. A `provider-account` world additionally requires private storage
+and exact HTTPS origins; it receives write-only credential handles rather than secret values.
+
+Hard-denied for every API: `network`, `network:*`, `filesystem`, `native`, `shell`, QQ cookies / `qm_keyst` / `qrsig` /
+OAuth secrets / ekey / local HTTP bearer tokens, arbitrary host IPC, and native `dll`/`so` loading.
+
+`player.control`, `network:https://…`, `provider.playback`, and `provider.account` are sensitive. Every added Provider
+capability, `plugin.storage`, or exact origin is independently checked on update; omitting any new grant rejects the
+update. Revoking a grant cancels the Component context and existing opaque playback sources immediately. The install
+review lists added and removed permissions when a package updates an already-installed plugin.
+Network requests are host-proxied: HTTPS only, origin allowlist, DNS private-IP rejection, redirect revalidation,
+no YAQMC credentials, body/response/timeout/rate limits.
+
+## Package extraction
+
+Archives are inspected before extract: path jail, symlink rejection, size/file-count limits, SHA-256 of the package,
+staging directory, then atomic replace. Nothing executes from the ZIP.
+
+All current user plugins, including API v3 Components, are **Unsigned / local**. SHA-256 matching itself is integrity,
+not publisher trust. Do not show “Verified”.
+
+## Scanner
+
+JS/CSS is scanned for fetch, `eval`, legacy-host globals, remote `@import`, and similar signals (Low / Medium / High). A clean
+scan does not prove safety. A high CSS remote-url finding blocks style activation.
+
+## Safe Mode
+
+A journal records plugin activation vs clean exit. Unclean shutdown during activation enables Safe Mode: third-party
+styles, scenes, and scripts stay off; built-in lyrics presets remain; packages and settings are kept. Suspect plugins
+are marked Failed so they are not reactivated in a crash loop.

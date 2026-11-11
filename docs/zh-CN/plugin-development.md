@@ -1,5 +1,10 @@
 # 插件开发
 
+运行 `npm run plugin:example:sync` 可在仓库旁生成独立的 `YAQMC-plugin-example`，内置离线 API 文档。
+复制该目录后编辑 `main.js`，在示例目录执行 `npm run pack` 即可打包。
+[歌词工具栏 API](plugin-lyrics-api.md) 展示可选窗口按钮。每次修改插件 API 后，运行同步命令并提交生成的
+SDK 与文档；`docs:check` 会阻止未同步的 API 变更进入 CI。
+
 > **简体中文** | [English](../plugin-development.md)
 
 旧版 API v1-v2 插件使用 `@yaqmc/plugin-sdk`（`sdk/plugin`）编写 TypeScript，再构建为 JavaScript。旧版生产宿主只执行

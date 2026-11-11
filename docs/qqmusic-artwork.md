@@ -25,6 +25,12 @@ metadata, YAQMC preserves that source and does not synthesize a larger URL.
 Album artwork takes priority over chart banners or unrelated MV artwork. QQ Music provider
 code owns URL construction; pages must not construct CDN URLs independently.
 
+Tracks-only account playlist responses can contain empty `dirinfo.title` and `dirinfo.picurl` even when
+the playlist has a custom cover. YAQMC preserves the cover from the selected playlist summary in this
+case; a valid cover returned by the detail response takes precedence. Old cached detail pages are
+repaired from the current summary without another request. Missing artwork uses the host placeholder,
+and image load failures remove the broken image rather than referencing development fixture assets.
+
 ## Live verification
 
 Verified on 2026-08-14 against public QQ Music catalog responses and image responses, without
@@ -55,7 +61,11 @@ candidate table.
 
 ## Cache and security boundary
 
-Each selected variant is cached under its own URL-derived key. The existing native artwork
-cache remains bounded and validates the response MIME type. Remote artwork is accepted only
-from the exact HTTPS hosts `y.gtimg.cn` and `qpic.y.qq.com`; credentials are not attached to
-artwork requests.
+Each selected variant is cached under its own URL-derived key. The native cache is bounded and
+validates the image MIME type. Approved exact HTTPS hosts include `y.gtimg.cn`, `qpic.y.qq.com`,
+`music-file.y.qq.com`, `q.qlogo.cn`, `thirdwx.qlogo.cn` and `thirdqq.qlogo.cn`; `y.qq.com` is limited to
+`/m/resource/calendar/` and `/music/common/upload/`. Credentials are not attached to artwork requests.
+
+On 2026-11-11 a public read reproduced empty metadata with `onlysonglist=1`; a full metadata read of
+the same playlist returned a `music-file.y.qq.com/songlist/` custom cover that downloaded as HTTP 200
+`image/jpeg`. The issue was metadata replacement, not a missing CDN permission.
