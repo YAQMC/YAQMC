@@ -1167,6 +1167,8 @@ export const zhTW = {
         ui_navigation: '為其頁面新增導覽入口',
         ui_layout: '調整受支援的 YAQMC 頁面區塊',
         ui_lyrics: '新增歌詞工具列動作與視窗按鈕',
+        files_read: '讀取由你選擇的檔案與目錄',
+        files_write: '修改、重新命名及刪除你所選位置中的檔案',
         network_origin: 'HTTPS 網路：{{origin}}',
         provider_catalog: '提供目錄與發現內容',
         provider_playback: '解析可播放音源',

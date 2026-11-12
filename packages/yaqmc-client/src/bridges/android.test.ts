@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAndroidBridge, readCapacitorAndroidApi } from './android';
 
 describe('createAndroidBridge', () => {
+  it('routes plugin files and handle retirement through native host IPC', async () => {
+    const invoke = vi.fn().mockResolvedValue(null);
+    const bridge = createAndroidBridge({ invoke, on: () => () => {} });
+    const request = { token: 'runtime', method: 'files.pickFile', payload: {} };
+    await expect(bridge.pluginFiles?.invoke(request)).resolves.toBeNull();
+    await bridge.pluginFiles?.release('runtime');
+    expect(invoke).toHaveBeenCalledWith('plugin_files', { request });
+    expect(invoke).toHaveBeenCalledWith('plugin_files_release', { token: 'runtime' });
+  });
   it('exposes Android capabilities and routes native share to the host', async () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
     const on = vi.fn().mockReturnValue(() => undefined);

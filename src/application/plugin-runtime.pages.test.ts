@@ -10,12 +10,19 @@ import { clearPluginUi, pluginLyricsActions } from './plugin-ui';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const handlers = vi.hoisted(() => new Map<string, (payload: never) => void>());
+const fileHost = vi.hoisted(() => ({ invoke: vi.fn(), release: vi.fn() }));
+const nativeFiles = vi.hoisted(() => ({ available: true }));
 
 vi.mock('./logger', () => ({ logger: { error: vi.fn() } }));
 vi.mock('./native-player-runtime', () => ({ isNativeRuntime: true }));
 vi.mock('./yaqmc-runtime', () => ({
   getHostBridge: () => ({ kind: 'electron' }),
   getYaqmcClient: () => ({
+    bridge: {
+      get pluginFiles() {
+        return nativeFiles.available ? fileHost : undefined;
+      },
+    },
     invoke: invokeMock,
     on: (channel: string, handler: (payload: never) => void) => {
       handlers.set(channel, handler);
@@ -91,13 +98,16 @@ function bridgeCalls(method: string): number {
   ).length;
 }
 
-describe('plugin API v4 runtime bridge', () => {
+describe('plugin runtime native and UI bridges', () => {
   beforeEach(() => {
     FakeWorker.instances = [];
     handlers.clear();
     allowed = {
       [OWNER]: ['ui.pages.register', 'ui.pages.render', 'ui.navigation.register', 'ui.layout.set'],
     };
+    nativeFiles.available = true;
+    fileHost.invoke.mockReset().mockResolvedValue({ data: 'hello' });
+    fileHost.release.mockReset().mockResolvedValue(undefined);
     vi.stubGlobal('Worker', FakeWorker);
     URL.createObjectURL = () => 'blob:yaqmc-plugin';
     URL.revokeObjectURL = () => undefined;
@@ -117,6 +127,68 @@ describe('plugin API v4 runtime bridge', () => {
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     return { ...hook, owner: FakeWorker.instances[0]!, other: FakeWorker.instances[1]! };
   }
+
+  it('binds native file calls to the owning runtime and releases grants on unload', async () => {
+    const { owner, other, unmount } = await start();
+    call(owner, 'read', 'files.readFile', { handle: 'chosen', token: 'forged' });
+    call(other, 'stat', 'files.stat', { handle: 'chosen' });
+    await waitFor(() => expect(result(owner, 'read')).toMatchObject({ ok: true }));
+    expect(fileHost.invoke).toHaveBeenCalledWith({
+      token: 'token:0',
+      method: 'files.readFile',
+      payload: { handle: 'chosen', token: 'forged' },
+    });
+    expect(fileHost.invoke).toHaveBeenCalledWith({
+      token: 'token:1',
+      method: 'files.stat',
+      payload: { handle: 'chosen' },
+    });
+    expect(bridgeCalls('files.readFile')).toBe(0);
+    unmount();
+    await waitFor(() => expect(fileHost.release).toHaveBeenCalledWith('token:0'));
+    expect(fileHost.release).toHaveBeenCalledWith('token:1');
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('plugin_runtime_stop', { token: 'token:0' }),
+    );
+  });
+
+  it('releases native handles immediately on a worker activation failure', async () => {
+    const { owner, unmount } = await start();
+    owner.onmessage?.({
+      data: { type: 'yaqmc/error', message: 'activation failed' },
+    } as MessageEvent);
+    await waitFor(() => expect(fileHost.release).toHaveBeenCalledWith('token:0'));
+    unmount();
+  });
+
+  it('releases native handles on an unhandled worker error and drops late responses', async () => {
+    let finish!: (value: unknown) => void;
+    fileHost.invoke.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { owner, unmount } = await start();
+    call(owner, 'pending', 'files.pickFile', {});
+    owner.onerror?.({ message: 'worker crashed' } as ErrorEvent);
+    await waitFor(() => expect(fileHost.release).toHaveBeenCalledWith('token:0'));
+    finish({ handle: 'late' });
+    await Promise.resolve();
+    expect(result(owner, 'pending')).toBeUndefined();
+    unmount();
+  });
+
+  it('reports file support as unavailable on non-native hosts', async () => {
+    nativeFiles.available = false;
+    const { owner, unmount } = await start();
+    call(owner, 'cap', 'files.capabilities', {});
+    call(owner, 'pick', 'files.pickFile', {});
+    await waitFor(() =>
+      expect(result(owner, 'cap')).toMatchObject({ ok: true, value: { available: false } }),
+    );
+    expect(result(owner, 'pick')).toMatchObject({ ok: false, error: 'files.unsupported' });
+    unmount();
+  });
 
   it('applies a page only after Core authorizes the call', async () => {
     const { owner, unmount } = await start();

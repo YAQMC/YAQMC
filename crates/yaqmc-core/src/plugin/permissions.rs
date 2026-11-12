@@ -23,6 +23,8 @@ pub enum PluginPermission {
     UiNavigation,
     UiLayout,
     UiLyrics,
+    FilesRead,
+    FilesWrite,
     Network,
     ProviderCatalog,
     ProviderPlayback,
@@ -60,6 +62,10 @@ pub const V4_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::UiLayout,
     PluginPermission::UiLyrics,
 ];
+
+/// API v5 keeps the v4 worker surface and adds native user-selected file capabilities.
+pub const V5_PERMISSIONS: &[PluginPermission] =
+    &[PluginPermission::FilesRead, PluginPermission::FilesWrite];
 
 pub const V3_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::UiSongBadges,
@@ -112,6 +118,8 @@ impl PluginPermission {
             Self::UiNavigation => "ui.navigation",
             Self::UiLayout => "ui.layout",
             Self::UiLyrics => "ui.lyrics",
+            Self::FilesRead => "files.read",
+            Self::FilesWrite => "files.write",
             Self::Network => "network",
             Self::ProviderCatalog => "provider.catalog",
             Self::ProviderPlayback => "provider.playback",
@@ -142,6 +150,8 @@ impl PluginPermission {
             Self::UiNavigation => "Add navigation entries for its pages",
             Self::UiLayout => "Rearrange supported YAQMC page sections",
             Self::UiLyrics => "Add lyrics toolbar actions and window buttons",
+            Self::FilesRead => "Read files and folders selected by the user",
+            Self::FilesWrite => "Modify and delete files in user-selected locations",
             Self::Network => "Scoped HTTPS network access",
             Self::ProviderCatalog => "Provide catalog and discovery data",
             Self::ProviderPlayback => "Resolve playable sources",
@@ -156,7 +166,12 @@ impl PluginPermission {
     pub fn sensitive(self) -> bool {
         matches!(
             self,
-            Self::PlayerControl | Self::Network | Self::ProviderPlayback | Self::ProviderAccount
+            Self::PlayerControl
+                | Self::Network
+                | Self::ProviderPlayback
+                | Self::ProviderAccount
+                | Self::FilesRead
+                | Self::FilesWrite
         )
     }
 }
@@ -187,6 +202,7 @@ pub fn parse_permission(
         .chain(V2_PERMISSIONS.iter())
         .chain(V3_PERMISSIONS.iter())
         .chain(V4_PERMISSIONS.iter())
+        .chain(V5_PERMISSIONS.iter())
     {
         if permission.as_str() == value {
             return Ok((*permission, None));
@@ -212,6 +228,7 @@ pub fn permission_allowed_for_api(permission: PluginPermission, api_version: u32
                 || V2_PERMISSIONS.contains(&permission)
                 || V4_PERMISSIONS.contains(&permission)
         }
+        5 => permission_allowed_for_api(permission, 4) || V5_PERMISSIONS.contains(&permission),
         _ => false,
     }
 }
@@ -303,6 +320,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn file_permissions_require_v5_and_are_sensitive() {
+        for (name, permission) in [
+            ("files.read", PluginPermission::FilesRead),
+            ("files.write", PluginPermission::FilesWrite),
+        ] {
+            assert_eq!(parse_permission(name).unwrap(), (permission, None));
+            assert!(permission_allowed_for_api(permission, 5));
+            assert!(permission.sensitive());
+            for version in [1, 2, 3, 4, 6] {
+                assert!(!permission_allowed_for_api(permission, version));
+            }
+        }
+        assert!(parse_permission("filesystem.read").is_err());
+    }
+
+    #[test]
     fn v1_permissions_parse_and_reserved_are_denied() {
         assert_eq!(
             parse_permission("player.control").unwrap(),
@@ -392,7 +425,8 @@ mod tests {
         ] {
             assert_eq!(parse_permission(name).unwrap(), (permission, None));
             assert!(permission_allowed_for_api(permission, 4));
-            for older in [1, 2, 3, 5] {
+            assert!(permission_allowed_for_api(permission, 5));
+            for older in [1, 2, 3, 6] {
                 assert!(!permission_allowed_for_api(permission, older));
             }
             assert!(!permission.sensitive());

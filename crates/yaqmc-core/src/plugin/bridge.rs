@@ -40,6 +40,15 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
         "ui.layout.set" | "ui.layout.clear" => Ok(Some(PluginPermission::UiLayout)),
         "ui.lyrics.register" | "ui.lyrics.unregister" => Ok(Some(PluginPermission::UiLyrics)),
         "network.request" => Ok(Some(PluginPermission::Network)),
+        "files.pickFile"
+        | "files.pickDirectory"
+        | "files.stat"
+        | "files.list"
+        | "files.readFile" => Ok(Some(PluginPermission::FilesRead)),
+        "files.writeFile" | "files.mkdir" | "files.rename" | "files.remove" => {
+            Ok(Some(PluginPermission::FilesWrite))
+        }
+        "files.capabilities" | "files.close" => Ok(None),
         "scenes.onMount"
         | "scenes.onUnmount"
         | "scenes.setVariable"
@@ -152,9 +161,24 @@ async fn dispatch_active_bridge(
                 | "ui.contextMenu.track.register"
                 | "ui.playerBar.register"
                 | "ui.sidebar.register"
+                | "files.capabilities"
+                | "files.close"
         )
     {
         return Err("update-validation-in-progress".into());
+    }
+    if request.method.starts_with("files.") {
+        if serde_json::to_vec(&request.payload).map_or(true, |bytes| bytes.len() > 768 * 1024) {
+            return Err("files.payload-too-large".into());
+        }
+        if matches!(
+            request.method.as_str(),
+            "files.pickFile" | "files.pickDirectory"
+        ) && request.payload.get("writable").and_then(Value::as_bool) == Some(true)
+        {
+            host.check_permission(&request.token, PluginPermission::FilesWrite)
+                .map_err(|error| error.to_string())?;
+        }
     }
     if is_page_ui_method(&request.method)
         && serde_json::to_vec(&request.payload)
@@ -189,6 +213,11 @@ async fn dispatch_active_bridge(
     host.rate_limit(&runtime.plugin_id, rate_key, limit)
         .map_err(|error| error.to_string())?;
     match request.method.as_str() {
+        // Native hosts own the system picker and opaque handles. This only authorizes one call;
+        // no path or URI supplied by a script is ever used by Core as a filesystem capability.
+        method if method.starts_with("files.") => {
+            Ok(json!({ "ok": true, "pluginId": runtime.plugin_id }))
+        }
         "track.get" | "track.read" => {
             let snapshot = player.snapshot().await;
             let current = snapshot
@@ -417,6 +446,43 @@ async fn dispatch_active_bridge(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_methods_are_explicit_and_split_read_write_permissions() {
+        for method in [
+            "files.pickFile",
+            "files.pickDirectory",
+            "files.readFile",
+            "files.stat",
+            "files.list",
+        ] {
+            assert_eq!(
+                required_permission(method).unwrap(),
+                Some(PluginPermission::FilesRead)
+            );
+        }
+        for method in [
+            "files.writeFile",
+            "files.rename",
+            "files.remove",
+            "files.mkdir",
+        ] {
+            assert_eq!(
+                required_permission(method).unwrap(),
+                Some(PluginPermission::FilesWrite)
+            );
+        }
+        assert_eq!(required_permission("files.capabilities").unwrap(), None);
+        assert_eq!(required_permission("files.close").unwrap(), None);
+        for method in [
+            "files.open",
+            "files.read",
+            "files.deleteRecursive",
+            "fs.read",
+        ] {
+            assert!(required_permission(method).is_err());
+        }
+    }
 
     #[test]
     fn reserved_bridge_methods_are_denied() {

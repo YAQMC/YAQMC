@@ -68,6 +68,10 @@ export function createElectronBridge(
     kind: 'electron',
     capabilities: { ...DESKTOP_HOST_CAPABILITIES, ...api.capabilities },
     windowRole,
+    pluginFiles: {
+      invoke: (request) => api.invoke('plugin_files', { request }),
+      release: (token) => api.invoke('plugin_files_release', { token }).then(() => undefined),
+    },
     window: invokeWindow(api),
     shell: invokeShell(api),
     clipboard: invokeClipboard(api),

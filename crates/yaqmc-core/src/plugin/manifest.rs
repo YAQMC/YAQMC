@@ -6,7 +6,7 @@ use crate::plugin::permissions::{parse_permission, permission_allowed_for_api, P
 
 pub const LEGACY_MANIFEST_VERSION: u32 = 1;
 pub const CURRENT_MANIFEST_VERSION: u32 = 2;
-pub const CURRENT_API_VERSION: u32 = 4;
+pub const CURRENT_API_VERSION: u32 = 5;
 pub const MIN_API_VERSION: u32 = 1;
 pub const PROVIDER_WIT_VERSION: &str = "0.1.0";
 pub const PROVIDER_WIT_WORLD: &str = "provider";
@@ -646,6 +646,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn v5_files_use_the_worker_shape_and_do_not_extend_provider_permissions() {
+        let source = valid_json().replace("\"apiVersion\": 1", "\"apiVersion\": 5").replace(
+            r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+            r#""entrypoints": { "script": "main.js" }, "permissions": ["files.read", "files.write"]"#,
+        );
+        let manifest = PluginManifest::parse(source.as_bytes()).unwrap();
+        assert!(manifest.compatibility_issue().is_none());
+        assert!(PluginManifest::parse(
+            source
+                .replace("\"apiVersion\": 5", "\"apiVersion\": 4")
+                .as_bytes()
+        )
+        .is_err());
+        assert!(PluginManifest::parse(
+            source
+                .replace("\"apiVersion\": 5", "\"apiVersion\": 3")
+                .as_bytes()
+        )
+        .is_err());
+    }
+
+    #[test]
     fn song_badges_require_permission_and_bounded_plain_text_declarations() {
         let mut value: serde_json::Value = serde_json::from_str(&valid_provider_json()).unwrap();
         let badge = serde_json::json!({
@@ -823,7 +845,7 @@ mod tests {
     #[test]
     fn future_api_permissions_install_as_incompatible_instead_of_malformed() {
         let future = valid_json()
-            .replace("\"apiVersion\": 1", "\"apiVersion\": 5")
+            .replace("\"apiVersion\": 1", "\"apiVersion\": 6")
             .replace(
                 r#""entrypoints": { "styles": ["styles/main.css"] }"#,
                 r#""entrypoints": { "script": "dist/main.js" },
@@ -840,7 +862,7 @@ mod tests {
             .compatibility_issue()
             .is_some());
         // A supported API still rejects permissions it does not define.
-        let unknown = future.replace("\"apiVersion\": 5", "\"apiVersion\": 4");
+        let unknown = future.replace("\"apiVersion\": 6", "\"apiVersion\": 5");
         assert_eq!(
             PluginManifest::parse(unknown.as_bytes()).unwrap_err(),
             ManifestError::UnknownPermission

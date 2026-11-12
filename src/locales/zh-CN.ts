@@ -1166,6 +1166,8 @@ export const zhCN = {
         ui_navigation: '为其页面添加导航入口',
         ui_layout: '调整受支持的 YAQMC 页面分区',
         ui_lyrics: '添加歌词工具栏动作和窗口按钮',
+        files_read: '读取由你选择的文件和目录',
+        files_write: '修改、重命名及删除你所选位置中的文件',
         network_origin: 'HTTPS 网络：{{origin}}',
         provider_catalog: '提供目录与发现内容',
         provider_playback: '解析可播放音源',

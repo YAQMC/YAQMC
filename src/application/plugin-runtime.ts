@@ -523,6 +523,19 @@ var ctx = {
     get: function (key) { return __yaqmcCall('storage.get', { key: String(key || '') }); },
     set: function (key, value) { return __yaqmcCall('storage.set', { key: String(key || ''), value: String(value || '') }); }
   },
+  files: {
+    capabilities: function () { return __yaqmcCall('files.capabilities'); },
+    pickFile: function (options) { return __yaqmcCall('files.pickFile', options || {}); },
+    pickDirectory: function (options) { return __yaqmcCall('files.pickDirectory', options || {}); },
+    stat: function (handle, path) { return __yaqmcCall('files.stat', { handle: handle, path: path || '' }); },
+    list: function (handle, options) { return __yaqmcCall('files.list', Object.assign({}, options, { handle: handle })); },
+    readFile: function (handle, options) { return __yaqmcCall('files.readFile', Object.assign({}, options, { handle: handle })); },
+    writeFile: function (handle, options) { return __yaqmcCall('files.writeFile', Object.assign({}, options, { handle: handle })); },
+    mkdir: function (handle, path) { return __yaqmcCall('files.mkdir', { handle: handle, path: path }); },
+    rename: function (handle, path, name) { return __yaqmcCall('files.rename', { handle: handle, path: path || '', name: name }); },
+    remove: function (handle, path) { return __yaqmcCall('files.remove', { handle: handle, path: path || '' }); },
+    close: function (handle) { return __yaqmcCall('files.close', { handle: handle }); }
+  },
   settings: {
     get: function () { return __yaqmcCall('settings.get'); },
     set: function (values) { return __yaqmcCall('settings.set', { values: values || {} }); }
@@ -715,17 +728,18 @@ function stopScripts(): void {
   }
   workers = new Map();
   workerPermissions = new Map();
-  void Promise.all(
-    [...runtimeTokens.values()].map((token) =>
-      client.invoke('plugin_runtime_stop', { token }).catch(() => undefined),
-    ),
-  );
+  void Promise.all([...runtimeTokens.values()].map((token) => stopPluginRuntime(token)));
   runtimeTokens = new Map();
   clearPluginUi();
   clearPluginSceneBackgrounds();
   workerFingerprints.clear();
   for (const ready of workerReadiness.values()) ready.resolve('plugin-stopped');
   workerReadiness.clear();
+}
+
+async function stopPluginRuntime(token: string): Promise<void> {
+  await client.bridge?.pluginFiles?.release(token).catch(() => undefined);
+  await client.invoke('plugin_runtime_stop', { token }).catch(() => undefined);
 }
 
 async function retireOnePlugin(id: string): Promise<void> {
@@ -751,7 +765,7 @@ async function retireOnePlugin(id: string): Promise<void> {
   if (sceneInstance.pluginId === id) resetSceneBehavior();
   const token = runtimeTokens.get(id);
   runtimeTokens.delete(id);
-  if (token) await client.invoke('plugin_runtime_stop', { token }).catch(() => undefined);
+  if (token) await stopPluginRuntime(token);
 }
 
 function asUiAction(
@@ -959,10 +973,7 @@ async function startScripts(
                 reason: data.message ?? 'plugin runtime error',
               })
               .catch(() => undefined);
-          worker.terminate();
-          workers.delete(script.pluginId);
-          workerPermissions.delete(script.pluginId);
-          clearPluginUi(script.pluginId);
+          void retireOnePlugin(script.pluginId);
           return;
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
@@ -977,14 +988,14 @@ async function startScripts(
           worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: false, error: invalid });
           return;
         }
-        void client
-          .invoke('plugin_bridge', {
-            request: {
-              token: boundToken as string,
-              method: data.method,
-              payload: data.payload ?? {},
-            },
-          })
+        const request = { token: boundToken, method: data.method, payload: data.payload ?? {} };
+        const operation = data.method.startsWith('files.')
+          ? (client.bridge?.pluginFiles?.invoke(request) ??
+            (data.method === 'files.capabilities'
+              ? Promise.resolve({ available: false })
+              : Promise.reject(new Error('files.unsupported'))))
+          : client.invoke('plugin_bridge', { request });
+        void operation
           .then(async (value) => {
             if (applyingPromise) await applyingPromise;
             if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
@@ -1018,13 +1029,14 @@ async function startScripts(
               reason: event.message || 'plugin runtime error',
             })
             .catch(() => undefined);
-        clearPluginUi(script.pluginId);
+        void retireOnePlugin(script.pluginId);
       };
       workers.set(script.pluginId, worker);
       workerFingerprints.set(script.pluginId, fingerprint);
       workerPermissions.set(script.pluginId, new Set(grants.get(script.pluginId) ?? []));
     } catch (error) {
       if (generation !== runtimeGeneration) return;
+      await retireOnePlugin(script.pluginId);
       const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
       logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
       if (updatingPlugins.has(script.pluginId)) throw error;

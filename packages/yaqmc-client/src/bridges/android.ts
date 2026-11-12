@@ -197,6 +197,10 @@ export function createAndroidBridge(
   return {
     kind: 'android',
     windowRole,
+    pluginFiles: {
+      invoke: (request) => api.invoke('plugin_files', { request }),
+      release: (token) => api.invoke('plugin_files_release', { token }).then(() => undefined),
+    },
     capabilities: {
       windowControls: false,
       lyricsSurfaces: true,

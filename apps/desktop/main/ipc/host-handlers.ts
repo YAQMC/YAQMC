@@ -43,6 +43,7 @@ import {
   type OAuthWindowLike,
 } from '../windows/oauth-window';
 import type { HostHandler } from './router';
+import { PluginFilesHost } from '../plugin-files';
 
 /** Not in the migrated Core inventory; HostBridge.shell.openExternal lands here. */
 export const SHELL_OPEN_EXTERNAL = 'shell.openExternal';
@@ -716,6 +717,21 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
 
   if (deps.dialogs) {
     const { showSaveDialog, showOpenDialog } = deps.dialogs;
+    if (deps.coreInvoke) {
+      const invoke = deps.coreInvoke;
+      const files = new PluginFilesHost(
+        (request) => invoke('plugin_bridge', { request }, 'main'),
+        showOpenDialog,
+      );
+      handlers.plugin_files = async (params, windowId) => {
+        if (windowId === undefined) throw new Error('files.invalid-window');
+        return files.invoke(params, windowId);
+      };
+      handlers.plugin_files_release = async (params, windowId) => {
+        if (windowId !== undefined) files.release((params as { token?: unknown })?.token, windowId);
+        return null;
+      };
+    }
     handlers.plugin_pick_directory = async () => pickDirectory(showOpenDialog);
     handlers[DIALOG_PICK_FILE] = async (params) => {
       const kind = openFileKindFromParams(params);

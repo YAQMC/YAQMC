@@ -107,6 +107,11 @@ export interface HostDialogBridge {
 }
 
 export interface HostBridge {
+  /** Native, user-selected file capabilities. Runtime tokens are supplied only by the host. */
+  readonly pluginFiles?: {
+    invoke(request: { token: string; method: string; payload: unknown }): Promise<unknown>;
+    release(token: string): Promise<void>;
+  };
   invoke<M extends MethodName>(method: M, ...params: InvokeArgs<M>): Promise<MethodResult[M]>;
   listen<C extends ChannelName>(
     channel: C,

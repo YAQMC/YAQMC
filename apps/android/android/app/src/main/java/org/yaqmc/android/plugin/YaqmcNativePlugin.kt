@@ -66,6 +66,27 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     private val updateInFlight = AtomicBoolean(false)
     private var deepLinkSubscription: AutoCloseable? = null
     private var lyricsOverlay: org.yaqmc.android.lyrics.NativeLyricsOverlay? = null
+    private var pluginFiles: PluginFiles? = null
+
+    private fun filesHost(): PluginFiles = pluginFiles ?: PluginFiles(
+        context.applicationContext,
+        { request, complete ->
+            invokeHostCoreEnvelope("plugin_bridge", JSObject().put("request", request)) { envelope ->
+                complete(envelope.ok && (envelope.result as? JSONObject)?.optBoolean("ok") == true)
+            }
+        },
+        { call, intent ->
+            bridge.executeOnMainThread {
+                runCatching { startActivityForResult(call, intent, "pluginFilesResult") }
+                    .onFailure { pluginFiles?.pickerFailed(call) }
+            }
+        },
+    ).also { pluginFiles = it }
+
+    @ActivityCallback
+    private fun pluginFilesResult(call: PluginCall?, result: ActivityResult) {
+        pluginFiles?.picked(call, result)
+    }
 
     override fun load() {
         if (!CoreManager.isReady()) {
@@ -144,6 +165,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     }
 
     override fun handleOnDestroy() {
+        pluginFiles?.close()
+        pluginFiles = null
         deepLinkSubscription?.close()
         deepLinkSubscription = null
         oauthHeartbeatTasks.values.forEach(oauthHeartbeatHandler::removeCallbacks)
@@ -166,6 +189,11 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             ?: return call.reject("method is required", "protocol.invalid_params")
         val params = call.getObject("params") ?: JSObject()
         when (method) {
+            "plugin_files" -> filesHost().invoke(call, params)
+            "plugin_files_release" -> {
+                pluginFiles?.release(params.optString("token"))
+                call.resolve(JSObject().put("value", JSONObject.NULL))
+            }
             "lyrics_supported" -> {
                 call.resolve(JSObject().put("value", true))
             }
@@ -643,10 +671,10 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             .takeIf { it == MobileLoginPolicy.QQ_MUSIC_PROVIDER_ID }
             ?: return call.reject("providerId is invalid", "protocol.invalid_params")
         // Reopening the official client must use the QR already displayed and subscribed to.
-        invokeOAuthLeaseMethod("provider_account_snapshot", JSObject().put("providerId", providerId)) { envelope ->
+        invokeHostCoreEnvelope("provider_account_snapshot", JSObject().put("providerId", providerId)) { envelope ->
             if (!envelope.ok) {
                 rejectCoreEnvelope(call, envelope)
-                return@invokeOAuthLeaseMethod
+                return@invokeHostCoreEnvelope
             }
             val snapshot = envelope.result as? JSONObject
             val expectedAttempt = params.optString("attemptId").takeIf(String::isNotBlank)
@@ -657,7 +685,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                 // A stale reopen button must never create a fresh QR or open an unrelated attempt.
                 if (snapshot != null) call.resolve(JSObject().put("value", snapshot))
                 else call.reject("The authorization snapshot is unavailable", "core.protocol")
-                return@invokeOAuthLeaseMethod
+                return@invokeHostCoreEnvelope
             }
             if (snapshot?.optString("state") in MOBILE_ACTIVE_STATES) {
                 if (snapshot != null) {
@@ -788,7 +816,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         if (ownerLeaseId == null) {
             val params = JSObject()
             attempt.providerId?.let { params.put("providerId", it) }
-            invokeOAuthLeaseMethod(attempt.snapshotMethod, params) { envelope ->
+            invokeHostCoreEnvelope(attempt.snapshotMethod, params) { envelope ->
                 val snapshot = envelope.result as? JSONObject
                 val matchingAttempt = snapshot
                     ?.optString("attemptId")
@@ -810,7 +838,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             .put("attemptId", attempt.attemptId)
             .put("ownerLeaseId", ownerLeaseId)
         attempt.providerId?.let { params.put("providerId", it) }
-        invokeOAuthLeaseMethod(attempt.heartbeatMethod, params) { envelope ->
+        invokeHostCoreEnvelope(attempt.heartbeatMethod, params) { envelope ->
             scheduleOAuthHeartbeat(
                 callbackId,
                 attempt,
@@ -819,7 +847,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         }
     }
 
-    private fun invokeOAuthLeaseMethod(
+    private fun invokeHostCoreEnvelope(
         method: String,
         params: JSObject,
         onResponse: (CoreEnvelope) -> Unit,

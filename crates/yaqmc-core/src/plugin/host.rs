@@ -3090,6 +3090,91 @@ mod tests {
         assert!(host.storage_get("dev.a", "k").is_none());
     }
 
+    #[tokio::test]
+    async fn native_file_authorization_requires_live_runtime_and_explicit_write_grants() {
+        use crate::plugin::{api::PluginBridgeRequest, bridge::dispatch_bridge};
+
+        let root = tempfile::tempdir().unwrap();
+        let host = ExtensionHost::open(root.path().to_path_buf()).unwrap();
+        let player = crate::player::PlayerService::new();
+        for (id, writable) in [("dev.example.reader", false), ("dev.example.writer", true)] {
+            let mut package = style_inspection(id);
+            package.manifest.api_version = 5;
+            let mut grants = vec!["files.read".to_owned()];
+            if writable {
+                grants.push("files.write".to_owned());
+            }
+            package.manifest.permissions = grants.clone();
+            package.manifest.validate().unwrap();
+            package
+                .files
+                .iter_mut()
+                .find(|file| file.path == "manifest.json")
+                .unwrap()
+                .bytes = serde_json::to_vec(&package.manifest).unwrap();
+            host.install_inspection(package, true, &grants, "test")
+                .unwrap();
+            let runtime = host.start_runtime(id).unwrap();
+            let request = |method: &str, payload| PluginBridgeRequest {
+                token: runtime.token.clone(),
+                method: method.into(),
+                payload,
+            };
+            assert!(
+                dispatch_bridge(&host, &player, &request("files.pickDirectory", json!({})))
+                    .await
+                    .is_ok()
+            );
+            assert_eq!(
+                dispatch_bridge(
+                    &host,
+                    &player,
+                    &request("files.pickDirectory", json!({"writable": true}))
+                )
+                .await
+                .is_ok(),
+                writable
+            );
+            assert_eq!(
+                dispatch_bridge(
+                    &host,
+                    &player,
+                    &request(
+                        "files.writeFile",
+                        json!({"handle": "native-only", "data": "hello"})
+                    )
+                )
+                .await
+                .is_ok(),
+                writable
+            );
+            assert!(dispatch_bridge(
+                &host,
+                &player,
+                &request("files.readFile", json!({"data": "x".repeat(768 * 1024)}))
+            )
+            .await
+            .is_err());
+            assert!(dispatch_bridge(
+                &host,
+                &player,
+                &PluginBridgeRequest {
+                    token: "forged".into(),
+                    method: "files.capabilities".into(),
+                    payload: json!({}),
+                }
+            )
+            .await
+            .is_err());
+            host.set_enabled_with_grants(id, false, &[]).unwrap();
+            assert!(
+                dispatch_bridge(&host, &player, &request("files.readFile", json!({})))
+                    .await
+                    .is_err()
+            );
+        }
+    }
+
     #[test]
     fn song_badges_follow_grants_disable_safe_mode_and_uninstall() {
         let root = tempfile::tempdir().unwrap();

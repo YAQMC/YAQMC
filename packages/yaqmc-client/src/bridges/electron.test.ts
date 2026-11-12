@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { createElectronBridge } from './electron';
 
 describe('Electron result envelope', () => {
+  it('routes opaque plugin file requests through native host IPC', async () => {
+    const invoke = vi.fn().mockResolvedValue({ handle: 'opaque' });
+    const bridge = createElectronBridge({ invoke, on: () => () => {} });
+    const request = {
+      token: 'runtime',
+      method: 'files.pickDirectory',
+      payload: { writable: true },
+    };
+    await expect(bridge.pluginFiles?.invoke(request)).resolves.toEqual({ handle: 'opaque' });
+    await bridge.pluginFiles?.release('runtime');
+    expect(invoke).toHaveBeenCalledWith('plugin_files', { request });
+    expect(invoke).toHaveBeenCalledWith('plugin_files_release', { token: 'runtime' });
+  });
   it('reconstructs provider error details on the renderer side', async () => {
     const details = {
       code: 'provider-not-configured',

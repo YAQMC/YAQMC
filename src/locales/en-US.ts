@@ -1203,6 +1203,8 @@ export const enUS = {
         ui_navigation: 'Add navigation entries for its pages',
         ui_layout: 'Rearrange supported YAQMC page sections',
         ui_lyrics: 'Add lyrics toolbar actions and window buttons',
+        files_read: 'Read files and folders you select',
+        files_write: 'Modify and delete files in locations you select',
         network_origin: 'HTTPS network: {{origin}}',
         provider_catalog: 'Provide catalog and discovery data',
         provider_playback: 'Resolve playable sources',
