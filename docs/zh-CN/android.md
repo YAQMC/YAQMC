@@ -21,6 +21,7 @@ Bundle。
 - 首页、发现、搜索、媒体库、账号页面、播放队列、统计和应用内歌词复用共享界面。
 - 紧凑屏幕使用四项底部导航；更大屏幕自动切换为导航栏。
 - Rust/CPAL 负责实际音频输出；AndroidX Media3 将状态投影到媒体通知、锁屏、蓝牙控制和耳机按键。
+- `PlaybackService` 在 `onCreate()` 中显式注册 `MediaSession`（`addSession()`）并设置 session activity：宿主不创建 `MediaController`、系统也不绑定该服务，显式注册后 Media3 才会发布 MediaStyle 媒体通知并进入 `mediaPlayback` 前台服务；session activity 则用于点击媒体卡片或通知正文回到应用。
 - 播放期间从最近任务划掉 YAQMC 不会停止音乐；需要使用暂停或通知中的停止操作。
 - 歌曲分享使用 Android 系统分享面板。`yaqmc://catalog/...` 由 Android Intent 显式交付，Android
   不轮询剪贴板中的分享链接。

@@ -1,5 +1,6 @@
 package org.yaqmc.android.media
 
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -15,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import org.yaqmc.android.MainActivity
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -67,7 +69,20 @@ class PlaybackService : MediaSessionService() {
             onPlaybackResourcesChanged = ::updatePlaybackResources,
             onStopRequested = ::stopAfterCore,
         )
-        session = MediaSession.Builder(this, player!!).setId("yaqmc").build()
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        session = MediaSession.Builder(this, player!!)
+            .setId("yaqmc")
+            .setSessionActivity(contentIntent)
+            .build()
         // Renderer playback goes straight to Core, so no controller binds to register the session.
         // Register it now so Media3 can publish media notifications and manage foreground playback.
         addSession(session!!)
