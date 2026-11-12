@@ -29,6 +29,10 @@ before building YAQMC. Older snapshot packages lack the required renderer settin
 - A four-destination bottom bar is used on compact screens; larger screens switch to a navigation rail.
 - Rust/CPAL owns audio output. AndroidX Media3 projects that state into the media notification, lock screen,
   Bluetooth controls, and headset buttons.
+- `PlaybackService` registers its `MediaSession` explicitly with `addSession()` in `onCreate()` and attaches a
+  session activity. The host never creates a `MediaController` and nothing else binds the service, so the
+  explicit registration is what lets Media3 publish the MediaStyle notification and enter the `mediaPlayback`
+  foreground service; the session activity is what lets the media card and notification body reopen the app.
 - Dismissing the task while music is playing does not stop playback. Use Pause or the notification's Stop action.
 - Song sharing uses the Android share sheet. `yaqmc://catalog/...` links are handled as explicit Android intents;
   Android never polls the clipboard for links.
