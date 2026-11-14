@@ -446,7 +446,8 @@ impl LocalFileSession {
                 remaining: 4 * 1024 * 1024,
                 cancellation: cancellation.clone(),
             };
-            // Lofty's options are thread-local. Bound each allocation and actual bytes read.
+            // Lofty's guarded allocations honor this thread-local limit; the
+            // reader separately bounds bytes read (this is not a host heap limit).
             apply_global_options(
                 GlobalOptions::new()
                     .allocation_limit(1024 * 1024)
