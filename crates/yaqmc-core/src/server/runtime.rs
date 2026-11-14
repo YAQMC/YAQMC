@@ -73,6 +73,25 @@ where
         #[cfg(feature = "plugins")]
         {
             let plugins = core.plugins();
+            if let Some(bridge) = plugins.local_files_bridge() {
+                let mut requests = bridge.subscribe();
+                let events = sink.clone();
+                let shutdown = core.subscribe_shutdown();
+                tokio::spawn(async move {
+                    let mut shutdown = shutdown;
+                    loop {
+                        tokio::select! {
+                            _ = shutdown.changed() => break,
+                            result = requests.recv() => match result {
+                                // Private native RPC is out-of-band and does not consume public event sequence IDs.
+                                Ok(payload) => events.emit(0, crate::plugin::local_files::CHANNEL, &payload),
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                                Err(_) => break,
+                            }
+                        }
+                    }
+                });
+            }
             plugins.start_update_service(Arc::downgrade(&core));
             let mut updates = plugins.subscribe_updates();
             let events = sink.clone();

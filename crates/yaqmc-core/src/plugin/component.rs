@@ -141,11 +141,22 @@ impl ProviderComponent {
         if world != ProviderWorld::Isolated && host.is_none() {
             return Err(ComponentRuntimeError::HostUnavailable);
         }
+        let capabilities: BTreeSet<_> = capabilities.into_iter().collect();
+        if world.has_local_files() {
+            if !capabilities.contains(&ProviderCapability::LocalFiles) {
+                return Err(ComponentRuntimeError::CapabilityDenied);
+            }
+            if let Some(host) = &host {
+                if !host.staging() {
+                    host.local_files.enable();
+                }
+            }
+        }
         Ok(Self {
             inner: Arc::new(ComponentInner {
                 engine: compiled.engine,
                 component: compiled.component,
-                capabilities: capabilities.into_iter().collect(),
+                capabilities,
                 world,
                 host,
                 permits: Arc::new(Semaphore::new(COMPONENT_MAX_CONCURRENCY)),
@@ -291,7 +302,9 @@ impl ProviderComponent {
         let operation = operation.to_owned();
         let payload_json = payload_json.to_owned();
         let capability = capability.as_str().to_owned();
-        let store_cancellation = cancellation.clone();
+        let invocation_cancellation = cancellation.child_token();
+        let _cancel_on_drop = invocation_cancellation.clone().drop_guard();
+        let store_cancellation = invocation_cancellation.clone();
         let mut task = tokio::task::spawn_blocking(move || {
             let _permit = permit;
             invoke_sync(
@@ -303,6 +316,11 @@ impl ProviderComponent {
             )
         });
 
+        let deadline = if self.inner.world.has_local_files() {
+            Duration::from_secs(110)
+        } else {
+            COMPONENT_OPERATION_DEADLINE
+        };
         let outcome = tokio::select! {
             joined = &mut task => joined.unwrap_or(Err(ComponentRuntimeError::SandboxFault)),
             _ = cancellation.cancelled() => {
@@ -310,7 +328,8 @@ impl ProviderComponent {
                 let _ = task.await;
                 return Err(ComponentRuntimeError::Cancelled);
             }
-            _ = tokio::time::sleep(COMPONENT_OPERATION_DEADLINE) => {
+            _ = tokio::time::sleep(deadline) => {
+                invocation_cancellation.cancel();
                 self.inner.engine.increment_epoch();
                 let _ = task.await;
                 Err(ComponentRuntimeError::Deadline)
@@ -436,10 +455,81 @@ fn add_component_host_imports(
     if world.has_network() {
         add_network_imports(linker, host.clone(), world.has_credentials())?;
     }
+    if world.has_local_files() {
+        add_local_files_imports(linker, host.clone())?;
+    }
     if world.has_credentials() {
         add_credential_imports(linker, host.clone())?;
         add_settings_imports(linker, host)?;
     }
+    Ok(())
+}
+
+fn add_local_files_imports(
+    linker: &mut Linker<ComponentStore>,
+    host: ComponentHostContext,
+) -> Result<(), ComponentRuntimeError> {
+    let mut instance = linker
+        .instance("yaqmc:provider/local-files@0.1.0")
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
+    let roots = host.clone();
+    instance
+        .func_wrap("list-roots", move |_store, (): ()| {
+            Ok((roots.local_files.list_roots(),))
+        })
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
+    let pick = host.clone();
+    instance
+        .func_wrap("request-root", move |store, (title,): (String,)| {
+            Ok((pick
+                .local_files
+                .request_root(&title, &store.data().cancellation),))
+        })
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
+    let walk = host.clone();
+    instance
+        .func_wrap(
+            "walk",
+            move |store, (root, cursor, limit): (String, String, u32)| {
+                Ok((walk.local_files.walk(
+                    &root,
+                    &cursor,
+                    limit,
+                    false,
+                    &store.data().cancellation,
+                ),))
+            },
+        )
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
+    let tracks = host.clone();
+    instance
+        .func_wrap(
+            "tracks",
+            move |store, (root, cursor, limit): (String, String, u32)| {
+                Ok((tracks.local_files.walk(
+                    &root,
+                    &cursor,
+                    limit,
+                    true,
+                    &store.data().cancellation,
+                ),))
+            },
+        )
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
+    instance
+        .func_wrap(
+            "read-chunk",
+            move |store, (root, relative, offset, length): (String, String, u64, u32)| {
+                Ok((host.local_files.read_chunk(
+                    &root,
+                    &relative,
+                    offset,
+                    length,
+                    &store.data().cancellation,
+                ),))
+            },
+        )
+        .map_err(|_| ComponentRuntimeError::SandboxFault)?;
     Ok(())
 }
 

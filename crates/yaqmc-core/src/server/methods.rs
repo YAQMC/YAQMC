@@ -25,6 +25,8 @@ use yaqmc_provider_api::{
 };
 
 use super::ops;
+#[cfg(feature = "local-api")]
+use super::types::PortParams;
 use super::types::SurfaceEnabledParams;
 use super::types::{
     ArtistCatalogParams, AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
@@ -32,14 +34,14 @@ use super::types::{
     IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LyricsDocumentParams,
     NamedRequest, OAuthCompleteParams, OAuthPrepareParams, OptionalAttemptParams, PathParams,
     PlaylistTracksParams, PluginIdParams, PluginMarkFailedParams, PluginReadAssetParams,
-    PortParams, PrimaryModeParams, ProviderAreaParams, ProviderArtistCatalogParams,
-    ProviderAttemptParams, ProviderAuthHeartbeatParams, ProviderAuthStartParams,
-    ProviderCursorPageParams, ProviderEntityParams, ProviderIdParams, ProviderNamedRequest,
-    ProviderOAuthCompleteParams, ProviderOAuthPrepareParams, ProviderOptionalAttemptParams,
-    ProviderPlaylistTracksParams, ProviderProfileCreateParams, ProviderProfileMutationParams,
-    ProviderQualityParams, ProviderRefreshParams, ProviderSearchParams, ProviderUrlParams,
-    QualityParams, RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams,
-    SearchParams, SeekParams, SettingKeyParams, SettingWriteParams, ShareSongParams, SongIdParams,
+    PrimaryModeParams, ProviderAreaParams, ProviderArtistCatalogParams, ProviderAttemptParams,
+    ProviderAuthHeartbeatParams, ProviderAuthStartParams, ProviderCursorPageParams,
+    ProviderEntityParams, ProviderIdParams, ProviderNamedRequest, ProviderOAuthCompleteParams,
+    ProviderOAuthPrepareParams, ProviderOptionalAttemptParams, ProviderPlaylistTracksParams,
+    ProviderProfileCreateParams, ProviderProfileMutationParams, ProviderQualityParams,
+    ProviderRefreshParams, ProviderSearchParams, ProviderUrlParams, QualityParams,
+    RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams, SearchParams,
+    SeekParams, SettingKeyParams, SettingWriteParams, ShareSongParams, SongIdParams,
     StatisticsRangeParams, SurfaceInteractionParams, TokenParams, TrackParams, TracksParams,
     UrlParams, ValueParams, VolumeParams,
 };
@@ -207,6 +209,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_runtime_stop",
     "plugin_mark_failed",
     "plugin_bridge",
+    "plugin_local_files",
     "plugin_install_unpacked",
     "plugin_reload",
     "plugin_read_asset",
@@ -1968,6 +1971,18 @@ async fn invoke_core(
             ))
         }
         #[cfg(feature = "plugins")]
+        "plugin_local_files" => {
+            let bridge =
+                core.plugins()
+                    .local_files_bridge()
+                    .ok_or_else(|| DispatchError::Command {
+                        message: "local-files.host-unavailable".into(),
+                        retryable: false,
+                        details: None,
+                    })?;
+            cmd(bridge.dispatch(&params))
+        }
+        #[cfg(feature = "plugins")]
         "plugin_bridge" => {
             let NamedRequest::<PluginBridgeRequest> { request } = parse(&params)?;
             cmd(ops::plugin_bridge(&core.plugins(), &core.player(), request).await)
@@ -2182,6 +2197,7 @@ async fn invoke_core(
         | "plugin_runtime_stop"
         | "plugin_mark_failed"
         | "plugin_bridge"
+        | "plugin_local_files"
         | "plugin_install_unpacked"
         | "plugin_reload"
         | "plugin_read_asset"

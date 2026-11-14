@@ -44,7 +44,7 @@ intentionally absent from Android. The in-app lyric screen remains available.
 
 ## Plugins
 
-Android builds Core with the `plugins` feature (Wasmtime 36.0.19 with Cranelift, Component Model) for `arm64-v8a`
+Android builds Core with the `plugins` feature (Wasmtime 36.0.20 with Cranelift, Component Model) for `arm64-v8a`
 and `x86_64`; `system-media` and `local-api` stay off. Core reports the platform as `android`, so a manifest must
 list `android` in `platforms` (or omit `platforms`) to activate; `unknown` never matches. **Plugins** is the fifth
 bottom-navigation item on phones and a rail item on tablets; plugin-defined v4 pages appear in the rail and as

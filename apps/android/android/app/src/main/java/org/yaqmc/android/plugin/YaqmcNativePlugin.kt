@@ -67,6 +67,51 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     private var deepLinkSubscription: AutoCloseable? = null
     private var lyricsOverlay: org.yaqmc.android.lyrics.NativeLyricsOverlay? = null
     private var pluginFiles: PluginFiles? = null
+    private var providerFiles: PluginFiles? = null
+
+    private fun providerFilesHost(): PluginFiles = providerFiles ?: PluginFiles(
+        context.applicationContext,
+        { request, complete ->
+            invokeHostCoreEnvelope("plugin_local_files", JSObject().put("operation", "authorize").put("request", request)) { envelope ->
+                complete(envelope.ok && (envelope.result as? JSONObject)?.optBoolean("ok") == true)
+            }
+        },
+        { call, intent ->
+            bridge.executeOnMainThread {
+                runCatching { startActivityForResult(call, intent, "providerFilesResult") }
+                    .onFailure { providerFiles?.pickerFailed(call) }
+            }
+        },
+    ).also { providerFiles = it }
+
+    @ActivityCallback
+    private fun providerFilesResult(call: PluginCall?, result: ActivityResult) {
+        providerFiles?.picked(call, result)
+    }
+
+    private fun handleProviderFilesEvent(json: String) {
+        val event = runCatching { JSONObject(json) }.getOrNull() ?: return
+        if (event.opt("release") is String) { providerFiles?.release(event.getString("release")); return }
+        val requestId = event.optString("requestId").takeIf { it.isNotEmpty() } ?: return
+        val request = event.optJSONObject("request") ?: return
+        fun complete(value: Any?, error: String?) {
+            invokeHostCoreEnvelope("plugin_local_files", JSObject().put("operation", "complete").put("requestId", requestId)
+                .put("value", value ?: JSONObject.NULL).put("error", error ?: JSONObject.NULL)) { }
+        }
+        if (request.optString("method") !in setOf("files.pickDirectory", "files.stat", "files.list", "files.readFile") ||
+            request.optJSONObject("payload")?.optBoolean("writable", false) == true) {
+            complete(null, "files.permission-denied"); return
+        }
+        // Native-only continuation: overridden completions never use a WebView MessageHandler.
+        val call = object : PluginCall(null, "YaqmcNative", "provider-local-$requestId", "providerFiles", JSObject()) {
+            override fun resolve(data: JSObject?) { complete(data?.opt("value"), null); bridge.releaseCall(this) }
+            override fun resolve() { complete(null, null); bridge.releaseCall(this) }
+            override fun reject(msg: String?, code: String?, ex: Exception?, data: JSObject?) {
+                complete(null, "files.native-operation-failed"); bridge.releaseCall(this)
+            }
+        }
+        providerFilesHost().invoke(call, event)
+    }
 
     private fun filesHost(): PluginFiles = pluginFiles ?: PluginFiles(
         context.applicationContext,
@@ -165,6 +210,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     }
 
     override fun handleOnDestroy() {
+        providerFiles?.close()
+        providerFiles = null
         pluginFiles?.close()
         pluginFiles = null
         deepLinkSubscription?.close()
@@ -488,6 +535,10 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     override fun onCoreResponse(id: Long, json: String) = Unit
 
     override fun onCoreEvent(sequence: Long, channel: String, json: String) {
+        if (channel == "host://provider-local-files") {
+            bridge.executeOnMainThread { handleProviderFilesEvent(json) }
+            return
+        }
         bridge.executeOnMainThread {
             notifyListeners(
                 "coreEvent",

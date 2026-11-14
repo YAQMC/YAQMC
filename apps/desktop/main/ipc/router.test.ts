@@ -54,6 +54,24 @@ describe('method ACL table', () => {
 });
 
 describe('IpcRouter', () => {
+  it('keeps Provider file continuations and capability tokens away from every renderer', async () => {
+    for (const role of [
+      'main',
+      'lyrics-desktop',
+      'lyrics-island',
+      'unlock-desktop',
+      'unlock-island',
+    ] as const) {
+      const { router, invoke } = routerWith(role);
+      await expect(
+        router.invoke(1, { method: 'plugin_local_files', params: { operation: 'authorize' } }),
+      ).resolves.toMatchObject({ ok: false });
+      expect(invoke).not.toHaveBeenCalled();
+      const sent = vi.fn();
+      router.fanout('host://provider-local-files', { request: { token: 'secret-session' } }, sent);
+      expect(sent).not.toHaveBeenCalled();
+    }
+  });
   it('returns host.denied when a surface invokes a main-only method', async () => {
     const { router, invoke } = routerWith('lyrics-desktop');
     await expect(router.invoke(1, { method: 'player_snapshot' })).resolves.toEqual({

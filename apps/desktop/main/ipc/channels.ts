@@ -69,6 +69,7 @@ export function hostOwnedUnimplemented(method: string): CoreError {
 }
 
 export function eventAllowed(role: WindowRole, channel: string): boolean {
+  if (channel === 'host://provider-local-files') return false;
   switch (role) {
     case 'main':
       return true;

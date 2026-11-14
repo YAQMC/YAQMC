@@ -253,8 +253,10 @@ export class PluginFilesHost {
         let index = 0;
         const directory = await fs.opendir(target);
         for await (const entry of directory) {
+          if (index % 256 === 0 && this.handles.get(handle) !== grant) return fail('cancelled');
           if (index++ < offset) continue;
-          if (entries.length === limit) return { entries, nextCursor: index - 1 };
+          if (entries.length === limit || index - 1 - offset >= 1000)
+            return { entries, nextCursor: index - 1, scanned: index - 1 - offset };
           if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) continue;
           try {
             fileName(entry.name);
@@ -263,7 +265,7 @@ export class PluginFilesHost {
           }
           entries.push(await info(path.join(target, entry.name), entry.name));
         }
-        return { entries, nextCursor: null };
+        return { entries, nextCursor: null, scanned: Math.max(0, index - offset) };
       }
       case 'files.readFile': {
         const offset = integer(p.offset, 0, Number.MAX_SAFE_INTEGER);

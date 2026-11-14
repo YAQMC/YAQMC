@@ -8,6 +8,7 @@
     "plugin://update-progress",
     "preferences://changed",
     "host://command",
+    "host://provider-local-files",
     "core://log",
     "account://changed",
     "provider://profiles-changed"

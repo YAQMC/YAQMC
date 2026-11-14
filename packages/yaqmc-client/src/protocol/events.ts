@@ -20,6 +20,7 @@ export const CHANNEL_PLUGIN_CHANGED = 'plugin://changed';
 export const CHANNEL_PLUGIN_UPDATE_PROGRESS = 'plugin://update-progress';
 export const CHANNEL_PREFERENCES_CHANGED = 'preferences://changed';
 export const CHANNEL_HOST_COMMAND = 'host://command';
+export const CHANNEL_PROVIDER_LOCAL_FILES = 'host://provider-local-files';
 export const CHANNEL_HOST_CORE_STATUS = 'host://core-status';
 export const CHANNEL_HOST_UPDATE = 'host://update';
 export const CHANNEL_CORE_LOG = 'core://log';
@@ -39,6 +40,7 @@ export const CORE_EVENT_CHANNELS = [
   CHANNEL_PLUGIN_UPDATE_PROGRESS,
   CHANNEL_PREFERENCES_CHANGED,
   CHANNEL_HOST_COMMAND,
+  CHANNEL_PROVIDER_LOCAL_FILES,
   CHANNEL_CORE_LOG,
   CHANNEL_ACCOUNT_CHANGED,
   CHANNEL_PROVIDER_PROFILES_CHANGED,
@@ -162,6 +164,7 @@ export interface ChannelPayload {
   [CHANNEL_PLUGIN_UPDATE_PROGRESS]: PluginUpdateOperation;
   [CHANNEL_PREFERENCES_CHANGED]: PreferencesChangedPayload;
   [CHANNEL_HOST_COMMAND]: HostCommandPayload;
+  [CHANNEL_PROVIDER_LOCAL_FILES]: unknown;
   [CHANNEL_CORE_LOG]: CoreLogPayload;
   [CHANNEL_ACCOUNT_CHANGED]: AccountChangedPayload;
   [CHANNEL_PROVIDER_PROFILES_CHANGED]: ProviderProfilesChangedPayload;

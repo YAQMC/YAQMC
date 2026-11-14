@@ -135,7 +135,8 @@ describe('song comments', () => {
           ),
         { wrapper },
       );
-      await waitFor(() => expect(viewer.result.current.status).toBe('ready'));
+      // Avoid multiplying the default 50 ms polling delay by 45 sequential viewers.
+      await waitFor(() => expect(viewer.result.current.status).toBe('ready'), { interval: 1 });
       viewers.push(viewer);
     }
     act(() => viewers.forEach((viewer) => viewer.unmount()));

@@ -8,7 +8,7 @@
     { "id": "cargo", "name": "Cargo", "required": "1.88.0" }
   ],
   "runtimeFacts": {
-    "registeredProtocolMethods": 210,
+    "registeredProtocolMethods": 211,
     "mainWindow": "1280×800 (no enforced minimum)"
   },
   "releaseArtifacts": [

@@ -61,6 +61,7 @@ function isSensitivePermission(permission: string): boolean {
     permission === 'provider.account' ||
     permission === 'files.read' ||
     permission === 'files.write' ||
+    permission === 'provider.localFiles' ||
     permission.startsWith('network:')
   );
 }

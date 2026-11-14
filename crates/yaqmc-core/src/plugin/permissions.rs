@@ -25,6 +25,7 @@ pub enum PluginPermission {
     UiLyrics,
     FilesRead,
     FilesWrite,
+    ProviderLocalFiles,
     Network,
     ProviderCatalog,
     ProviderPlayback,
@@ -68,6 +69,7 @@ pub const V5_PERMISSIONS: &[PluginPermission] =
     &[PluginPermission::FilesRead, PluginPermission::FilesWrite];
 
 pub const V3_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::ProviderLocalFiles,
     PluginPermission::UiSongBadges,
     PluginPermission::PluginStorage,
     PluginPermission::Network,
@@ -120,6 +122,7 @@ impl PluginPermission {
             Self::UiLyrics => "ui.lyrics",
             Self::FilesRead => "files.read",
             Self::FilesWrite => "files.write",
+            Self::ProviderLocalFiles => "provider.localFiles",
             Self::Network => "network",
             Self::ProviderCatalog => "provider.catalog",
             Self::ProviderPlayback => "provider.playback",
@@ -152,6 +155,7 @@ impl PluginPermission {
             Self::UiLyrics => "Add lyrics toolbar actions and window buttons",
             Self::FilesRead => "Read files and folders selected by the user",
             Self::FilesWrite => "Modify and delete files in user-selected locations",
+            Self::ProviderLocalFiles => "Read and play audio from user-selected folders",
             Self::Network => "Scoped HTTPS network access",
             Self::ProviderCatalog => "Provide catalog and discovery data",
             Self::ProviderPlayback => "Resolve playable sources",
@@ -172,6 +176,7 @@ impl PluginPermission {
                 | Self::ProviderAccount
                 | Self::FilesRead
                 | Self::FilesWrite
+                | Self::ProviderLocalFiles
         )
     }
 }

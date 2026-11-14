@@ -24,7 +24,11 @@ struct ChannelSink {
 
 impl EventSink for ChannelSink {
     fn emit(&self, _source_seq: u64, channel: &str, payload: &Value) {
-        let seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        let seq = if channel == yaqmc_protocol::CHANNEL_PROVIDER_LOCAL_FILES {
+            0 // Private native continuations never consume renderer sequence numbers.
+        } else {
+            self.seq.fetch_add(1, Ordering::Relaxed) + 1
+        };
         let _ = self.sender.send(CoreMessage::Event {
             seq,
             channel: channel.to_owned(),
@@ -193,4 +197,30 @@ where
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn private_native_file_events_do_not_create_public_sequence_gaps() {
+        let (sender, mut receive) = mpsc::unbounded_channel();
+        let sink = ChannelSink {
+            sender,
+            seq: AtomicU64::new(0),
+        };
+        for channel in [
+            "player://snapshot",
+            yaqmc_protocol::CHANNEL_PROVIDER_LOCAL_FILES,
+            "player://snapshot",
+        ] {
+            sink.emit(0, channel, &Value::Null);
+        }
+        for expected in [1, 0, 2] {
+            let CoreMessage::Event { seq, .. } = receive.try_recv().unwrap() else {
+                panic!("event")
+            };
+            assert_eq!(seq, expected);
+        }
+    }
 }

@@ -33,6 +33,7 @@ pub struct ComponentHostServices {
 }
 
 struct ComponentHostServicesInner {
+    local_files: super::local_files::LocalFilesBridge,
     staging: bool,
     data_root: PathBuf,
     cache_root: PathBuf,
@@ -50,6 +51,7 @@ struct NamespaceState {
 
 #[derive(Clone)]
 pub struct ComponentHostContext {
+    pub(crate) local_files: Arc<super::local_files::LocalFileSession>,
     services: ComponentHostServices,
     plugin_id: Arc<str>,
     provider_id: Arc<str>,
@@ -142,6 +144,7 @@ impl ComponentHostServices {
             .map_err(|_| "component cache directory could not be created".to_owned())?;
         Ok(Self {
             inner: Arc::new(ComponentHostServicesInner {
+                local_files: Default::default(),
                 staging: false,
                 data_root,
                 cache_root,
@@ -204,6 +207,9 @@ impl ComponentHostServices {
                 .clone()
         };
         ComponentHostContext {
+            local_files: Arc::new(super::local_files::LocalFileSession::new(
+                self.inner.local_files.clone(),
+            )),
             services: self.clone(),
             plugin_id: Arc::from(plugin_id),
             provider_id: Arc::from(provider_id),
@@ -217,6 +223,10 @@ impl ComponentHostServices {
 
     pub(crate) fn runtime_handle(&self) -> tokio::runtime::Handle {
         self.inner.runtime.clone()
+    }
+
+    pub(crate) fn local_files_bridge(&self) -> super::local_files::LocalFilesBridge {
+        self.inner.local_files.clone()
     }
 
     pub(crate) fn stage_update(
@@ -367,6 +377,7 @@ impl ComponentHostContext {
     }
     pub fn revoke(&self) {
         self.revoked.store(true, Ordering::Release);
+        self.local_files.revoke();
     }
 
     pub fn ensure_active(&self) -> Result<(), String> {

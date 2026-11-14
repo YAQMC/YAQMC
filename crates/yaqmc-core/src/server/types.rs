@@ -456,6 +456,7 @@ pub struct EnabledParams {
     pub enabled: bool,
 }
 
+#[cfg(feature = "local-api")]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PortParams {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.CancellationSignal
 import android.provider.DocumentsContract as Docs
 import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSObject
@@ -31,11 +32,13 @@ internal class PluginFiles(
         val method: String = request.getString("method")
         val payload: JSONObject = request.getJSONObject("payload")
         @Volatile var cancelled = false
+        val signal = CancellationSignal()
     }
     private val grants = ConcurrentHashMap<String, Grant>()
     private val pending = ConcurrentHashMap<String, Pending>()
     private val picker = AtomicReference<String?>(null)
     private val executor = Executors.newSingleThreadExecutor()
+    private val currentOperation = ThreadLocal<Pending>()
     @Volatile private var closed = false
     private val resolver get() = context.contentResolver
 
@@ -48,14 +51,14 @@ internal class PluginFiles(
     }
 
     @Synchronized fun release(token: String) {
-        pending.values.filter { it.token == token }.forEach { it.cancelled = true }
+        pending.values.filter { it.token == token }.forEach { it.cancelled = true; it.signal.cancel() }
         grants.entries.removeIf { it.value.token == token }
     }
 
     @Synchronized fun close() {
         closed = true
         grants.clear()
-        pending.values.forEach { it.cancelled = true; it.call.reject("files.cancelled") }
+        pending.values.forEach { it.cancelled = true; it.signal.cancel(); it.call.reject("files.cancelled") }
         pending.clear()
         executor.shutdownNow()
     }
@@ -135,10 +138,12 @@ internal class PluginFiles(
     }
 
     private fun attempt(operation: Pending, action: () -> Unit) {
+        currentOperation.set(operation)
         try { action() } catch (error: Exception) {
             picker.compareAndSet(operation.call.callbackId, null)
             if (pending.remove(operation.call.callbackId, operation)) {
                 val code = when {
+                    operation.cancelled -> "files.cancelled"
                     error.message?.startsWith("files.") == true -> error.message!!
                     error is FileNotFoundException -> "files.not-found"
                     error is SecurityException -> "files.permission-denied"
@@ -146,7 +151,7 @@ internal class PluginFiles(
                 }
                 operation.call.reject(code)
             }
-        }
+        } finally { currentOperation.remove() }
     }
 
     private fun finish(operation: Pending, value: Any?) {
@@ -156,7 +161,7 @@ internal class PluginFiles(
     private fun info(uri: Uri, writable: Boolean): JSONObject {
         val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME,
             Docs.Document.COLUMN_MIME_TYPE, Docs.Document.COLUMN_SIZE, Docs.Document.COLUMN_LAST_MODIFIED)
-        return requireNotNull(resolver.query(uri, columns, null, null, null)) { "files.not-found" }.use { cursor ->
+        return requireNotNull(resolver.query(uri, columns, null, null, null, currentOperation.get()?.signal)) { "files.not-found" }.use { cursor ->
             require(cursor.moveToFirst()) { "files.not-found" }
             JSONObject().put("name", cursor.getString(1)).put("type", if (cursor.getString(2) == Docs.Document.MIME_TYPE_DIR) "directory" else "file")
                 .put("size", if (cursor.isNull(3)) JSONObject.NULL else cursor.getLong(3))
@@ -164,17 +169,21 @@ internal class PluginFiles(
         }
     }
 
-    private fun children(grant: Grant, parent: Uri, offset: Long = 0, limit: Int = 200): Pair<List<Pair<Uri, JSONObject>>, Long?> {
+    private data class ChildrenPage(val entries: List<Pair<Uri, JSONObject>>, val nextCursor: Long?, val scanned: Long)
+
+    private fun children(grant: Grant, parent: Uri, offset: Long = 0, limit: Int = 200): ChildrenPage {
         val tree = requireNotNull(grant.tree) { "files.not-a-directory" }
         val query = Docs.buildChildDocumentsUriUsingTree(tree, Docs.getDocumentId(parent))
         val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME,
             Docs.Document.COLUMN_MIME_TYPE, Docs.Document.COLUMN_SIZE, Docs.Document.COLUMN_LAST_MODIFIED)
-        return requireNotNull(resolver.query(query, columns, null, null, null)) { "files.not-found" }.use { cursor ->
+        return requireNotNull(resolver.query(query, columns, null, null, null, currentOperation.get()?.signal)) { "files.not-found" }.use { cursor ->
             val entries = mutableListOf<Pair<Uri, JSONObject>>()
             var index = 0L
             while (cursor.moveToNext()) {
+                if (index % 256 == 0L) require(grants.values.any { it === grant }) { "files.cancelled" }
                 if (index++ < offset) continue
-                if (entries.size == limit) return@use entries to (index - 1)
+                if (entries.size == limit || index - 1 - offset >= 1000)
+                    return@use ChildrenPage(entries, index - 1, index - 1 - offset)
                 val name = cursor.getString(1)
                 if (runCatching { PluginFilePolicy.name(name) }.isFailure) continue
                 val uri = Docs.buildDocumentUriUsingTree(tree, cursor.getString(0))
@@ -183,7 +192,7 @@ internal class PluginFiles(
                     .put("size", if (cursor.isNull(3)) JSONObject.NULL else cursor.getLong(3))
                     .put("modifiedMs", if (cursor.isNull(4)) JSONObject.NULL else cursor.getLong(4)).put("writable", grant.writable))
             }
-            entries to null
+            ChildrenPage(entries, null, (index - offset).coerceAtLeast(0))
         }
     }
 
@@ -237,7 +246,7 @@ internal class PluginFiles(
             if (data != null) {
                 require(info(target, true).getString("type") == "file") { "files.not-a-file" }
                 check(operation)
-                val descriptor = requireNotNull(resolver.openFileDescriptor(target, "rwt")) { "files.io" }
+                val descriptor = requireNotNull(resolver.openFileDescriptor(target, "rwt", currentOperation.get()?.signal)) { "files.io" }
                 ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { it.write(data) }
             }
             return JSONObject().put("ok", true).apply { if (data != null) put("bytesWritten", data.size) }
@@ -249,8 +258,8 @@ internal class PluginFiles(
                 val offset = PluginFilePolicy.number(p.opt("cursor"), 0, 1_000_000)
                 val limit = PluginFilePolicy.number(p.opt("limit"), 100, 200).toInt()
                 require(limit > 0 && info(target, false).getString("type") == "directory") { "files.not-a-directory" }
-                val (entries, next) = children(grant, target, offset, limit)
-                JSONObject().put("entries", JSONArray(entries.map { it.second })).put("nextCursor", next ?: JSONObject.NULL)
+                val (entries, next, scanned) = children(grant, target, offset, limit)
+                JSONObject().put("entries", JSONArray(entries.map { it.second })).put("nextCursor", next ?: JSONObject.NULL).put("scanned", scanned)
             }
             "files.readFile" -> {
                 val offset = PluginFilePolicy.number(p.opt("offset"), 0, 9_007_199_254_740_991L)
@@ -259,7 +268,7 @@ internal class PluginFiles(
                 val encoding = PluginFilePolicy.encoding(p)
                 val metadata = info(target, false)
                 require(metadata.getString("type") == "file") { "files.not-a-file" }
-                val descriptor = requireNotNull(resolver.openFileDescriptor(target, "r")) { "files.io" }
+                val descriptor = requireNotNull(resolver.openFileDescriptor(target, "r", currentOperation.get()?.signal)) { "files.io" }
                 ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
                         if (offset > 0) runCatching { input.channel.position(offset) }.getOrElse { error("files.unsupported-seek") }
                         val buffer = ByteArray(length)

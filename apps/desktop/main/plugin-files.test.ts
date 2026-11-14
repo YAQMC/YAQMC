@@ -200,6 +200,29 @@ describe('native plugin file capabilities', () => {
     expect(() => fileName('x\u0000')).toThrow('files.invalid-path');
   });
 
+  it('bounds physical enumeration even when every entry is filtered out', async () => {
+    for (let index = 0; index < 1001; index++) {
+      await fs.symlink(
+        folder,
+        path.join(folder, `skip-${index}`),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    }
+    const { handle } = await choose();
+    const first = (await call('list', { handle })) as {
+      scanned: number;
+      nextCursor: number | null;
+    };
+    expect(first.scanned).toBeLessThanOrEqual(1000);
+    expect(first.nextCursor).not.toBeNull();
+    const last = (await call('list', { handle, cursor: first.nextCursor })) as {
+      scanned: number;
+      nextCursor: number | null;
+    };
+    expect(last.scanned).toBeLessThanOrEqual(1000);
+    expect(last.nextCursor).toBeNull();
+  });
+
   it('authorizes before opening a picker and sanitizes native failures', async () => {
     const picker = vi.fn(async () => ({ canceled: false, filePaths: [folder] }));
     host = new PluginFilesHost(async () => {

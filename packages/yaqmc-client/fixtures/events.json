@@ -145,6 +145,14 @@
     },
     "seq": 13
   },
+  "host://provider-local-files": {
+    "channel": "host://provider-local-files",
+    "kind": "event",
+    "payload": {
+      "release": "example-session"
+    },
+    "seq": 0
+  },
   "host://update": {
     "channel": "host://update",
     "kind": "event",

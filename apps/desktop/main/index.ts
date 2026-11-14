@@ -1,4 +1,5 @@
 import { cancelProviderOAuthWindows } from './windows/oauth-window';
+import { ProviderLocalFilesHost } from './provider-local-files';
 import {
   app,
   BrowserWindow,
@@ -1154,7 +1155,17 @@ function fanoutEvent(channel: string, payload: unknown): void {
 }
 
 function bindCoreEvents(): void {
+  const client = supervisor?.client;
+  if (!client) return;
+  const localFiles = new ProviderLocalFilesHost(
+    (method, params, origin) => client.invoke(method, params, origin),
+    (options) => dialog.showOpenDialog(options),
+  );
   supervisor?.client.on('event', (frame: { channel: string; payload: unknown }) => {
+    if (frame.channel === 'host://provider-local-files') {
+      void localFiles.handle(frame.payload);
+      return;
+    }
     if (frame.channel === 'plugin://update-progress') {
       const operation = frame.payload as { phase?: string; preview?: { providerIds?: string[] } };
       if (operation.phase === 'quiescing')

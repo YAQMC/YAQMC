@@ -247,6 +247,11 @@ fn events() -> Value {
             channel: CHANNEL_HOST_COMMAND.to_owned(),
             payload: json!({ "command": "raise" }),
         }),
+        "host://provider-local-files": to_value(&CoreMessage::Event {
+            seq: 0,
+            channel: "host://provider-local-files".to_owned(),
+            payload: json!({ "release": "example-session" }),
+        }),
         CHANNEL_CORE_LOG: to_value(&CoreMessage::Event {
             seq: 8,
             channel: CHANNEL_CORE_LOG.to_owned(),

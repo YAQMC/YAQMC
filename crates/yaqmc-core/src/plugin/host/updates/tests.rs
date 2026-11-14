@@ -664,8 +664,8 @@ async fn multi_provider_update_keeps_federation_and_isolates_only_changed_sessio
     extract_to(&inspection, &path).unwrap();
     let op = prepared(&host, &path).await;
     assert_eq!(
-        op.preview.as_ref().unwrap().session_changes,
-        [changed.clone()]
+        op.preview.as_ref().unwrap().session_changes.as_slice(),
+        std::slice::from_ref(&changed)
     );
     assert_eq!(apply(&host, op).await.phase, "completed");
     let runtime = host.provider_runtime.lock().unwrap();

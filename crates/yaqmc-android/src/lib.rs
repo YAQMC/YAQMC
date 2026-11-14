@@ -813,7 +813,11 @@ struct AndroidCallbackSink {
 
 impl AndroidCallbackSink {
     fn emit_event(&self, channel: &str, payload: &Value) {
-        let seq = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
+        let seq = if channel == yaqmc_protocol::CHANNEL_PROVIDER_LOCAL_FILES {
+            0
+        } else {
+            self.sequence.fetch_add(1, Ordering::Relaxed) + 1
+        };
         let channel = channel.to_owned();
         let payload = payload.to_string();
         if let Err(error) = self.vm.attach_current_thread(|env| {

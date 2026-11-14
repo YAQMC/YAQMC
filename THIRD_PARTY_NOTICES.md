@@ -38,6 +38,15 @@ unmodified Simplified-to-Traditional Chinese converter locally when Traditional 
 Distributions must retain the package's `LICENSE`, `LICENSES/Apache-2.0.txt`, and
 `THIRD_PARTY_LICENSES.md`, including the corresponding upstream notices.
 
+## Lofty
+
+Source: <https://github.com/Serial-ATA/lofty-rs>
+
+Package: `lofty` `0.22.4`, licensed under MIT OR Apache-2.0. Core uses the unmodified crate for bounded audio tag
+and property parsing in the optional Provider local-files capability. `Cargo.lock` records its transitive
+dependencies (`lofty_attr`, `ogg_pager`, `paste` and existing utility crates). Distributors must retain the
+applicable upstream license texts. This version supports the workspace's Rust 1.88 minimum.
+
 ## Rust Provider Component examples
 
 The optional, unsigned API v3 example packages in [YAQMC/yaqmc-plugins](https://github.com/YAQMC/yaqmc-plugins/tree/main/plugins/packages) contain WebAssembly Components

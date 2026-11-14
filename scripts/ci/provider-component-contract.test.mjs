@@ -51,6 +51,20 @@ test('frozen world imports match the checked-in WIT contract', () => {
   }
 });
 
+test('local audio authority is a separate Host import capability with bounded native continuations', () => {
+  assert.deepEqual(fixture.hostCapabilities['provider.localFiles'], {
+    sensitive: true,
+    interface: 'local-files',
+    methods: ['list-roots', 'request-root', 'walk', 'tracks', 'read-chunk'],
+    playbackRecipe: 'local',
+  });
+  assert.match(wit, /interface local-files \{/u);
+  assert.match(
+    wit,
+    /read-chunk: func\(root: string, relative: string, offset: u64, length: u32\)/u,
+  );
+});
+
 test('golden envelopes cover every v3 capability without exposing transport secrets', () => {
   const sampledOperations = fixture.sampleInvocations.map(({ request }) => request.operation);
   assert.deepEqual(sampledOperations, [

@@ -23,6 +23,8 @@ pub mod host;
 #[cfg(feature = "plugins")]
 mod kugou_signing;
 #[cfg(feature = "plugins")]
+pub mod local_files;
+#[cfg(feature = "plugins")]
 pub mod manifest;
 #[cfg(feature = "plugins")]
 pub mod network;

@@ -686,6 +686,7 @@ const METHODS: &[MethodSpec] = &[
     spec("plugin_runtime_stop", MethodOwner::Core, OriginClass::Main),
     spec("plugin_mark_failed", MethodOwner::Core, OriginClass::Main),
     spec("plugin_bridge", MethodOwner::Core, OriginClass::Main),
+    spec("plugin_local_files", MethodOwner::Core, OriginClass::Host),
     spec(
         "plugin_pick_directory",
         MethodOwner::Host,
@@ -851,6 +852,7 @@ const fn timeout_class(name: &str) -> TimeoutClass {
     if const_starts_with(name, "player_") || const_eq(name, "core_ping") {
         TimeoutClass::Control
     } else if const_eq(name, "plugin_install")
+        || const_eq(name, "provider_search")
         || const_eq(name, "plugin_install_from")
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")

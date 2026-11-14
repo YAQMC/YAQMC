@@ -13,6 +13,8 @@ export const STANDARD_TIMEOUT_MS = 30_000;
 export const LONG_TIMEOUT_MS = 120_000;
 
 const LONG_METHODS = new Set([
+  // Local Provider components may wait for an explicit user directory choice.
+  'provider_search',
   'core_shutdown_prepare',
   'plugin_install',
   'plugin_install_from',
@@ -177,6 +179,10 @@ export class CoreClient extends EventEmitter {
       return;
     }
     if (message.kind === 'event') {
+      if (message.channel === 'host://provider-local-files') {
+        this.emit('event', message);
+        return;
+      }
       if (this.lastSeq !== undefined && message.seq !== this.lastSeq + 1) {
         this.emit('resync', { previous: this.lastSeq, seq: message.seq });
       }

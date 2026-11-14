@@ -144,6 +144,8 @@ pub struct PluginEntrypoints {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ProviderCapability {
+    #[serde(rename = "provider.localFiles")]
+    LocalFiles,
     #[serde(rename = "provider.catalog")]
     Catalog,
     #[serde(rename = "provider.playback")]
@@ -161,6 +163,7 @@ pub enum ProviderCapability {
 impl ProviderCapability {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::LocalFiles => "provider.localFiles",
             Self::Catalog => "provider.catalog",
             Self::Playback => "provider.playback",
             Self::Recommendation => "provider.recommendation",
@@ -172,6 +175,7 @@ impl ProviderCapability {
 
     pub fn permission(self) -> PluginPermission {
         match self {
+            Self::LocalFiles => PluginPermission::ProviderLocalFiles,
             Self::Catalog => PluginPermission::ProviderCatalog,
             Self::Playback => PluginPermission::ProviderPlayback,
             Self::Recommendation => PluginPermission::ProviderRecommendation,
@@ -184,6 +188,10 @@ impl ProviderCapability {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderWorld {
+    LocalFiles,
+    LocalFilesStorage,
+    LocalFilesNetwork,
+    LocalFilesNetworkStorage,
     Isolated,
     Storage,
     Network,
@@ -194,6 +202,10 @@ pub enum ProviderWorld {
 impl ProviderWorld {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
+            "provider-local-files" => Some(Self::LocalFiles),
+            "provider-local-files-storage" => Some(Self::LocalFilesStorage),
+            "provider-local-files-network" => Some(Self::LocalFilesNetwork),
+            "provider-local-files-network-storage" => Some(Self::LocalFilesNetworkStorage),
             "provider" => Some(Self::Isolated),
             "provider-storage" => Some(Self::Storage),
             "provider-network" => Some(Self::Network),
@@ -204,15 +216,39 @@ impl ProviderWorld {
     }
 
     pub fn has_storage(self) -> bool {
-        matches!(self, Self::Storage | Self::NetworkStorage | Self::Account)
+        matches!(
+            self,
+            Self::Storage
+                | Self::NetworkStorage
+                | Self::Account
+                | Self::LocalFilesStorage
+                | Self::LocalFilesNetworkStorage
+        )
     }
 
     pub fn has_network(self) -> bool {
-        matches!(self, Self::Network | Self::NetworkStorage | Self::Account)
+        matches!(
+            self,
+            Self::Network
+                | Self::NetworkStorage
+                | Self::Account
+                | Self::LocalFilesNetwork
+                | Self::LocalFilesNetworkStorage
+        )
     }
 
     pub fn has_credentials(self) -> bool {
         matches!(self, Self::Account)
+    }
+
+    pub fn has_local_files(self) -> bool {
+        matches!(
+            self,
+            Self::LocalFiles
+                | Self::LocalFilesStorage
+                | Self::LocalFilesNetwork
+                | Self::LocalFilesNetworkStorage
+        )
     }
 }
 
@@ -423,6 +459,7 @@ impl PluginManifest {
             if world.has_storage() != requests_storage
                 || world.has_network() != requests_network
                 || world.has_credentials() != has_account
+                || world.has_local_files() != capabilities.contains(&ProviderCapability::LocalFiles)
             {
                 return Err(ManifestError::InvalidProvider);
             }
@@ -644,6 +681,40 @@ pub fn current_platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn local_file_worlds_require_the_exact_sensitive_capability() {
+        for (world, storage, network) in [
+            ("provider-local-files", false, false),
+            ("provider-local-files-storage", true, false),
+            ("provider-local-files-network", false, true),
+            ("provider-local-files-network-storage", true, true),
+        ] {
+            let mut value: serde_json::Value =
+                serde_json::from_str(&valid_provider_json()).unwrap();
+            value["provider"]["world"] = json!(world);
+            value["provider"]["capabilities"] = json!(["provider.catalog", "provider.localFiles"]);
+            let mut permissions = vec!["provider.catalog", "provider.localFiles"];
+            if storage {
+                permissions.push("plugin.storage");
+            }
+            if network {
+                permissions.push("network:https://example.com");
+            }
+            value["permissions"] = json!(permissions);
+            assert!(
+                PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_ok(),
+                "{world}"
+            );
+            value["provider"]["capabilities"] = json!(["provider.catalog"]);
+            assert!(PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_err());
+            value["provider"]["capabilities"] = json!(["provider.catalog", "provider.localFiles"]);
+            value["provider"]["world"] = json!("provider");
+            assert!(PluginManifest::parse(&serde_json::to_vec(&value).unwrap()).is_err());
+        }
+        assert!(PluginPermission::ProviderLocalFiles.sensitive());
+    }
 
     #[test]
     fn v5_files_use_the_worker_shape_and_do_not_extend_provider_permissions() {

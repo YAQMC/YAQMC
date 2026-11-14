@@ -278,6 +278,7 @@ export const MIGRATED_METHOD_NAMES = [
   'plugin_runtime_stop',
   'plugin_mark_failed',
   'plugin_bridge',
+  'plugin_local_files',
   'plugin_pick_directory',
   'plugin_install_unpacked',
   'plugin_reload',
@@ -617,6 +618,13 @@ export type MethodParams = Exhaustive<{
   plugin_runtime_stop: { token: string };
   plugin_mark_failed: { id: string; reason: string };
   plugin_bridge: NamedRequest<PluginBridgeRequest>;
+  plugin_local_files: {
+    operation: 'authorize' | 'complete';
+    request?: unknown;
+    requestId?: string;
+    value?: unknown;
+    error?: string;
+  };
   plugin_pick_directory: void;
   plugin_install_unpacked: NamedRequest<PluginInstallRequest>;
   plugin_reload: { id: string };
@@ -844,6 +852,7 @@ export type MethodResult = Exhaustive<{
   plugin_runtime_stop: void;
   plugin_mark_failed: PluginRecord;
   plugin_bridge: unknown;
+  plugin_local_files: unknown;
   plugin_pick_directory: string | null;
   plugin_install_unpacked: PluginRecord;
   plugin_reload: PluginRecord;

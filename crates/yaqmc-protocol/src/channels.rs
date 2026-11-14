@@ -14,6 +14,8 @@ pub const CHANNEL_LYRICS_SURFACE_INTERACTION: &str = "lyrics://surface-interacti
 pub const CHANNEL_APP_OPEN_SETTINGS: &str = "app://open-settings";
 pub const CHANNEL_APP_OPEN_CATALOG_SONG: &str = "app://open-catalog-song";
 pub const CHANNEL_HOST_COMMAND: &str = "host://command";
+/// Native host only. Contains capability tokens and must never be forwarded to renderers.
+pub const CHANNEL_PROVIDER_LOCAL_FILES: &str = "host://provider-local-files";
 pub const CHANNEL_HOST_CORE_STATUS: &str = "host://core-status";
 pub const CHANNEL_HOST_UPDATE: &str = "host://update";
 pub const CHANNEL_CORE_LOG: &str = "core://log";
@@ -30,6 +32,7 @@ pub const CORE_EVENT_CHANNELS: &[&str] = &[
     CHANNEL_PLUGIN_UPDATE_PROGRESS,
     CHANNEL_PREFERENCES_CHANGED,
     CHANNEL_HOST_COMMAND,
+    CHANNEL_PROVIDER_LOCAL_FILES,
     CHANNEL_CORE_LOG,
     CHANNEL_ACCOUNT_CHANGED,
     CHANNEL_PROVIDER_PROFILES_CHANGED,

@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_209_method_single_source_of_truth() {
+fn registry_is_the_211_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 184 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 185 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -68,6 +68,7 @@ fn application_updater_methods_are_host_owned_and_main_renderer_only() {
 fn oauth_launch_details_are_host_only() {
     for name in [
         "auth_oauth_prepare",
+        "plugin_local_files",
         "auth_oauth_complete",
         "auth_oauth_cancel",
         "provider_auth_oauth_prepare",

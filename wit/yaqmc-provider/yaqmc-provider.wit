@@ -36,6 +36,16 @@ interface settings {
   get: func() -> result<string, string>;
 }
 
+/// Read-only audio access through native, user-selected directory grants.
+/// Root IDs and cursors are session-scoped; neither paths nor content URIs are exposed.
+interface local-files {
+  list-roots: func() -> result<list<string>, string>;
+  request-root: func(title: string) -> result<option<string>, string>;
+  walk: func(root: string, cursor: string, limit: u32) -> result<string, string>;
+  tracks: func(root: string, cursor: string, limit: u32) -> result<string, string>;
+  read-chunk: func(root: string, relative: string, offset: u64, length: u32) -> result<list<u8>, string>;
+}
+
 /// Frozen provider guest contract for Plugin API v3.
 ///
 /// The host validates `capability` against the manifest before dispatch. Each
@@ -86,6 +96,50 @@ world provider-account {
   import network;
   import credentials;
   import settings;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-local-files {
+  import utilities;
+  import local-files;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-local-files-storage {
+  import utilities;
+  import local-files;
+  import storage;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-local-files-network {
+  import utilities;
+  import local-files;
+  import network;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-local-files-network-storage {
+  import utilities;
+  import local-files;
+  import network;
+  import storage;
   export invoke: func(
     capability: string,
     operation: string,

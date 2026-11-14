@@ -536,7 +536,9 @@ impl ComponentProviderAdapter {
             .call_account_scoped(ProviderCapability::Playback, operation, request)
             .await
             .map_err(map_playback_command_error)?;
-        resolution.into_source(self, self.current_playback_guard())
+        resolution
+            .into_source(self, self.current_playback_guard())
+            .await
     }
 }
 
@@ -760,10 +762,11 @@ struct ComponentPlaybackResolution {
 enum ComponentPlaybackRecipe {
     Cache { key: String },
     Https { request: Value },
+    Local { root: String, relative: String },
 }
 
 impl ComponentPlaybackResolution {
-    fn into_source(
+    async fn into_source(
         self,
         adapter: &ComponentProviderAdapter,
         epoch_guard: PlaybackEpochGuard,
@@ -784,7 +787,43 @@ impl ComponentPlaybackResolution {
             "wav" => yaqmc_provider_api::AudioFormat::Wav,
             _ => return Err(PlaybackSourceError::DecoderUnsupported),
         };
+        let mut cache_key = self.cache_key;
         let opaque: Arc<dyn OpaquePlaybackSource> = match self.source {
+            ComponentPlaybackRecipe::Local { root, relative } => {
+                if !adapter.declared.contains(&ProviderCapability::LocalFiles) {
+                    return Err(PlaybackSourceError::ProviderFailure);
+                }
+                let host = adapter
+                    .host
+                    .as_ref()
+                    .ok_or(PlaybackSourceError::ProviderUnavailable)?;
+                crate::plugin::local_files::validate_relative(&relative)
+                    .map_err(|_| PlaybackSourceError::ProviderFailure)?;
+                if !crate::plugin::local_files::audio_file(&relative) {
+                    return Err(PlaybackSourceError::DecoderUnsupported);
+                }
+                let session = host.local_files.clone();
+                let stat_root = root.clone();
+                let stat_relative = relative.clone();
+                let stat = tokio::task::spawn_blocking(move || {
+                    session.stat(&stat_root, &stat_relative, &CancellationToken::new())
+                })
+                .await
+                .map_err(|_| PlaybackSourceError::ProviderFailure)?
+                .map_err(|_| PlaybackSourceError::ProviderFailure)?;
+                if stat["type"] != "file" || stat["size"].as_u64() != Some(self.content_length) {
+                    return Err(PlaybackSourceError::ProviderFailure);
+                }
+                // A guest cache key cannot substitute another root/file or a previous
+                // authorization session's cached audio for the selected local source.
+                cache_key = local_playback_cache_key(&root, &relative, &stat)?;
+                Arc::new(ComponentLocalPlaybackSource {
+                    root,
+                    relative,
+                    host: host.clone(),
+                    content_length: self.content_length,
+                })
+            }
             ComponentPlaybackRecipe::Cache { key } => {
                 validate_playback_text(&key, 240)?;
                 let host = adapter
@@ -822,7 +861,7 @@ impl ComponentPlaybackResolution {
             }
         };
         Ok(ResolvedPlaybackSource {
-            cache_key: format!("component:{}:{}", adapter.provider_id, self.cache_key),
+            cache_key: format!("component:{}:{}", adapter.provider_id, cache_key),
             location: PlaybackLocation::Opaque(opaque),
             format,
             mime_type: self.mime_type,
@@ -839,6 +878,102 @@ impl ComponentPlaybackResolution {
             selection: self.selection,
             epoch_guard,
         })
+    }
+}
+
+struct ComponentLocalPlaybackSource {
+    root: String,
+    relative: String,
+    host: ComponentHostContext,
+    content_length: u64,
+}
+
+fn local_playback_cache_key(
+    root: &str,
+    relative: &str,
+    stat: &Value,
+) -> Result<String, PlaybackSourceError> {
+    use sha2::{Digest, Sha256};
+    // Unknown/zero modification times are common with SAF providers. Reusing
+    // their cache by size alone could replay stale audio after an in-place edit.
+    let nonce = if stat["modifiedMs"].as_f64().is_some_and(|v| v > 0.0) {
+        Value::Null
+    } else {
+        json!(format!("{:032x}", rand::random::<u128>()))
+    };
+    let identity = serde_json::to_vec(&json!([
+        root,
+        relative,
+        stat["size"],
+        stat["modifiedMs"],
+        nonce
+    ]))
+    .map_err(|_| PlaybackSourceError::ProviderFailure)?;
+    Ok(format!("local:{:x}", Sha256::digest(identity)))
+}
+
+impl std::fmt::Debug for ComponentLocalPlaybackSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ComponentLocalPlaybackSource")
+            .field("content_length", &self.content_length)
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl OpaquePlaybackSource for ComponentLocalPlaybackSource {
+    fn content_length(&self) -> u64 {
+        self.content_length
+    }
+    async fn read_range(
+        &self,
+        offset: u64,
+        length: usize,
+        cancellation: CancellationToken,
+    ) -> Result<Vec<u8>, PlaybackSourceError> {
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if length > 1024 * 1024
+            || offset
+                .checked_add(length as u64)
+                .is_none_or(|end| end > self.content_length)
+        {
+            return Err(PlaybackSourceError::RangeUnsupported);
+        }
+        let session = self.host.local_files.clone();
+        let root = self.root.clone();
+        let relative = self.relative.clone();
+        let cancel = cancellation.clone();
+        let bytes = tokio::task::spawn_blocking(move || {
+            let mut bytes = Vec::with_capacity(length);
+            while bytes.len() < length {
+                let size = (length - bytes.len()).min(crate::plugin::local_files::MAX_BYTES);
+                let chunk = session.read_chunk(
+                    &root,
+                    &relative,
+                    offset + bytes.len() as u64,
+                    size as u32,
+                    &cancel,
+                )?;
+                if chunk.len() != size {
+                    return Err("local-files.short-read".into());
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok::<_, String>(bytes)
+        })
+        .await
+        .map_err(|_| PlaybackSourceError::ProviderFailure)?
+        .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if cancellation.is_cancelled() || bytes.len() != length {
+            return Err(PlaybackSourceError::RangeUnsupported);
+        }
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        Ok(bytes)
     }
 }
 
@@ -2661,6 +2796,273 @@ mod tests {
                 .read_range(0, 4, tokio_util::sync::CancellationToken::new())
                 .await,
             Err(PlaybackSourceError::Cancelled)
+        );
+    }
+
+    #[tokio::test]
+    async fn real_local_files_component_scans_tags_and_plays_only_granted_audio() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/plugins/packages/dev.yaqmc.example.local-files-1.0.0.yaqmc-plugin");
+        let package = crate::plugin::package::inspect_package(&fixture).unwrap();
+        let wasm = &package
+            .files
+            .iter()
+            .find(|f| f.path == "component/provider.wasm")
+            .unwrap()
+            .bytes;
+        let root = tempfile::tempdir().unwrap();
+        let services = ComponentHostServices::open(
+            root.path().join("data"),
+            root.path().join("cache"),
+            Arc::new(MemoryCredentialStore::default()),
+            tokio::runtime::Handle::current(),
+        )
+        .unwrap();
+        let bridge = services.local_files_bridge();
+        let mut events = bridge.subscribe();
+        let host = services.for_plugin(
+            "dev.yaqmc.example.local-files",
+            "dev.yaqmc.example.local-files",
+            Default::default(),
+        );
+        let adapter = ComponentProviderAdapter::from_manifest_with_host(
+            &package.manifest,
+            wasm,
+            Some(host.clone()),
+        )
+        .unwrap();
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&8036u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&8000u32.to_le_bytes());
+        wav.extend_from_slice(&8000u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&8u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&8000u32.to_le_bytes());
+        wav.resize(8044, 128);
+        let mut info = b"INFO".to_vec();
+        for (key, value) in [
+            (b"INAM", "Local fixture"),
+            (b"IART", "Test Artist"),
+            (b"IPRD", "Test Album"),
+        ] {
+            info.extend_from_slice(key);
+            info.extend_from_slice(&((value.len() + 1) as u32).to_le_bytes());
+            info.extend_from_slice(value.as_bytes());
+            info.push(0);
+            if (value.len() + 1) % 2 != 0 {
+                info.push(0);
+            }
+        }
+        wav.extend_from_slice(b"LIST");
+        wav.extend_from_slice(&(info.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&info);
+        let riff_size = (wav.len() - 8) as u32;
+        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
+        let expected = wav.clone();
+        let picks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let picked = picks.clone();
+        let native = tokio::spawn(async move {
+            while let Ok(event) = events.recv().await {
+                if event["release"].is_string() {
+                    continue;
+                }
+                let request = &event["request"];
+                assert_eq!(
+                    bridge
+                        .dispatch(&json!({"operation":"authorize","request":request}))
+                        .unwrap()["ok"],
+                    true
+                );
+                let value = match request["method"].as_str().unwrap() {
+                    "files.pickDirectory" => {
+                        json!({"handle":format!("test-root-{}", picked.fetch_add(1, Ordering::Relaxed))})
+                    }
+                    "files.list" => {
+                        json!({"entries":(0..3).map(|index|json!({"name":format!("tone-{index}.wav"),"type":"file","size":wav.len(),"modifiedMs":1})).collect::<Vec<_>>(),"nextCursor":null})
+                    }
+                    "files.stat" => {
+                        json!({"name":"tone.wav","type":"file","size":wav.len(),"modifiedMs":1})
+                    }
+                    "files.readFile" => {
+                        let offset = request["payload"]["offset"].as_u64().unwrap() as usize;
+                        let length = request["payload"]["length"].as_u64().unwrap() as usize;
+                        let bytes = &wav
+                            [offset.min(wav.len())..offset.saturating_add(length).min(wav.len())];
+                        json!({"data":STANDARD.encode(bytes)})
+                    }
+                    _ => panic!("unexpected write or raw access"),
+                };
+                bridge.dispatch(&json!({"operation":"complete","requestId":event["requestId"],"value":value})).unwrap();
+            }
+        });
+        let found = adapter
+            .catalog_search(":add-folder".into(), CatalogSearchKind::Song, 1, 20)
+            .await
+            .unwrap();
+        let SearchResult::Song { items, .. } = found else {
+            panic!("song search")
+        };
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].title, "Local fixture");
+        assert_eq!(items[0].artists[0].name, "Test Artist");
+        assert_eq!(items[0].album.title, "Test Album");
+        assert_eq!(
+            items[0].duration_ms, 1000,
+            "Lofty properties cross the real WIT import"
+        );
+        let SearchResult::Song { items: second, .. } = adapter
+            .catalog_search(":add-folder".into(), CatalogSearchKind::Song, 2, 1)
+            .await
+            .unwrap()
+        else {
+            panic!("song page")
+        };
+        assert_eq!(second.len(), 1);
+        assert_eq!(
+            second[0].id, items[1].id,
+            "paging honors the requested limit"
+        );
+        assert_eq!(
+            picks.load(Ordering::Relaxed),
+            1,
+            "paging a command must not reopen a picker"
+        );
+        let source = adapter.resolve(&items[0]).await.unwrap();
+        assert!(
+            !format!("{source:?}").contains("tone.wav"),
+            "native transport authority stays opaque"
+        );
+        let PlaybackLocation::Opaque(bytes) = source.location else {
+            panic!("opaque local media")
+        };
+        assert_eq!(
+            bytes
+                .read_range(0, expected.len(), CancellationToken::new())
+                .await
+                .unwrap(),
+            expected
+        );
+        assert!(host
+            .local_files
+            .read_chunk("foreign", "tone.wav", 0, 10, &CancellationToken::new())
+            .is_err());
+        adapter.component().disable();
+        assert!(bytes
+            .read_range(0, 4, CancellationToken::new())
+            .await
+            .is_err());
+        let replacement_host = services.for_plugin(
+            "dev.yaqmc.example.local-files",
+            "dev.yaqmc.example.local-files",
+            Default::default(),
+        );
+        let replacement = ComponentProviderAdapter::from_manifest_with_host(
+            &package.manifest,
+            wasm,
+            Some(replacement_host),
+        )
+        .unwrap();
+        let SearchResult::Song { items: fresh, .. } = replacement
+            .catalog_search(":add-folder".into(), CatalogSearchKind::Song, 1, 20)
+            .await
+            .unwrap()
+        else {
+            panic!("new session")
+        };
+        assert_ne!(
+            fresh[0].id, items[0].id,
+            "old queue IDs cannot target another session's tracks"
+        );
+        assert!(replacement.resolve(&items[0]).await.is_err());
+        native.abort();
+    }
+
+    #[test]
+    fn local_cache_requires_a_known_mtime_for_reuse() {
+        let known = json!({"size": 100, "modifiedMs": 123});
+        let key = local_playback_cache_key("root", "song.flac", &known).unwrap();
+        assert_eq!(
+            key,
+            local_playback_cache_key("root", "song.flac", &known).unwrap()
+        );
+        assert_ne!(
+            key,
+            local_playback_cache_key("other-root", "song.flac", &known).unwrap()
+        );
+        for mtime in [Value::Null, json!(0)] {
+            let stat = json!({"size":100,"modifiedMs":mtime});
+            assert_ne!(
+                local_playback_cache_key("root", "song.flac", &stat).unwrap(),
+                local_playback_cache_key("root", "song.flac", &stat).unwrap()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn dropping_a_local_provider_call_cancels_its_native_request_and_releases_the_permit() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/plugins/packages/dev.yaqmc.example.local-files-1.0.0.yaqmc-plugin");
+        let package = crate::plugin::package::inspect_package(&fixture).unwrap();
+        let wasm = &package
+            .files
+            .iter()
+            .find(|f| f.path == "component/provider.wasm")
+            .unwrap()
+            .bytes;
+        let root = tempfile::tempdir().unwrap();
+        let services = ComponentHostServices::open(
+            root.path().join("data"),
+            root.path().join("cache"),
+            Arc::new(MemoryCredentialStore::default()),
+            tokio::runtime::Handle::current(),
+        )
+        .unwrap();
+        let bridge = services.local_files_bridge();
+        let mut events = bridge.subscribe();
+        let host = services.for_plugin(
+            "dev.yaqmc.example.local-files",
+            "dev.yaqmc.example.local-files",
+            Default::default(),
+        );
+        let adapter = ComponentProviderAdapter::from_manifest_with_host(
+            &package.manifest,
+            wasm,
+            Some(host.clone()),
+        )
+        .unwrap();
+        let running = adapter.clone();
+        let call = tokio::spawn(async move {
+            running
+                .catalog_search(":add-folder".into(), CatalogSearchKind::Song, 1, 20)
+                .await
+        });
+        let event = tokio::time::timeout(Duration::from_secs(10), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        call.abort();
+        assert!(call.await.unwrap_err().is_cancelled());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while adapter.component().busy() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("aborted native call releases the Wasm permit");
+        assert_eq!(
+            bridge
+                .dispatch(&json!({"operation":"authorize","request":event["request"]}))
+                .unwrap()["ok"],
+            false
+        );
+        assert!(
+            host.local_files.list_roots().is_ok(),
+            "cancelling a call does not disable the provider session"
         );
     }
 

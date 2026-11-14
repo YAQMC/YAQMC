@@ -1169,6 +1169,7 @@ export const zhTW = {
         ui_lyrics: '新增歌詞工具列動作與視窗按鈕',
         files_read: '讀取由你選擇的檔案與目錄',
         files_write: '修改、重新命名及刪除你所選位置中的檔案',
+        provider_localFiles: '讀取並播放由你選擇的目錄中的音訊',
         network_origin: 'HTTPS 網路：{{origin}}',
         provider_catalog: '提供目錄與發現內容',
         provider_playback: '解析可播放音源',

@@ -12,7 +12,19 @@
     "provider-storage": ["utilities", "storage"],
     "provider-network": ["utilities", "network"],
     "provider-network-storage": ["utilities", "storage", "network"],
-    "provider-account": ["utilities", "storage", "network", "credentials", "settings"]
+    "provider-account": ["utilities", "storage", "network", "credentials", "settings"],
+    "provider-local-files": ["utilities", "local-files"],
+    "provider-local-files-storage": ["utilities", "local-files", "storage"],
+    "provider-local-files-network": ["utilities", "local-files", "network"],
+    "provider-local-files-network-storage": ["utilities", "local-files", "network", "storage"]
+  },
+  "hostCapabilities": {
+    "provider.localFiles": {
+      "sensitive": true,
+      "interface": "local-files",
+      "methods": ["list-roots", "request-root", "walk", "tracks", "read-chunk"],
+      "playbackRecipe": "local"
+    }
   },
   "capabilities": {
     "provider.catalog": {

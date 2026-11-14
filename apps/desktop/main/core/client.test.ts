@@ -32,6 +32,21 @@ function pushMessage(readable: PassThrough, message: unknown) {
 }
 
 describe('CoreClient', () => {
+  it('does not trigger state resyncs for private native file traffic', () => {
+    const { client, readable } = mockStream();
+    const resync = vi.fn();
+    client.on('resync', resync);
+    pushMessage(readable, { kind: 'event', seq: 1, channel: 'player://snapshot', payload: {} });
+    pushMessage(readable, {
+      kind: 'event',
+      seq: 0,
+      channel: 'host://provider-local-files',
+      payload: {},
+    });
+    pushMessage(readable, { kind: 'event', seq: 2, channel: 'player://snapshot', payload: {} });
+    expect(resync).not.toHaveBeenCalled();
+    client.close();
+  });
   it('keeps the 32 MiB framing cap from the protocol mirror', () => {
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
   });

@@ -1205,6 +1205,7 @@ export const enUS = {
         ui_lyrics: 'Add lyrics toolbar actions and window buttons',
         files_read: 'Read files and folders you select',
         files_write: 'Modify and delete files in locations you select',
+        provider_localFiles: 'Read and play audio from folders you select',
         network_origin: 'HTTPS network: {{origin}}',
         provider_catalog: 'Provide catalog and discovery data',
         provider_playback: 'Resolve playable sources',

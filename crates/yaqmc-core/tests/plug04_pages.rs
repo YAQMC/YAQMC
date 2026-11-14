@@ -141,7 +141,13 @@ fn unsupported_api_versions_stay_installed_but_never_activate() {
     let (_root, host) = open_host();
     let future = variant(|manifest| {
         manifest
-            .replace("\"apiVersion\": 4", "\"apiVersion\": 5")
+            .replace(
+                "\"apiVersion\": 4",
+                &format!(
+                    "\"apiVersion\": {}",
+                    yaqmc_core::plugin::manifest::CURRENT_API_VERSION + 1
+                ),
+            )
             .replace("\"ui.layout\"", "\"ui.layout\", \"ui.someFutureSlot\"")
     });
     let record = host

@@ -186,7 +186,7 @@ function fixture() {
       legacyService: 'dev.music-client.desktop',
       entries: ['qqmusic-session', 'qqmusic-session-staging', 'local-api-bearer-token'],
     },
-    runtimeFacts: { registeredProtocolMethods: 210, mainWindow: '1280×800 (no enforced minimum)' },
+    runtimeFacts: { registeredProtocolMethods: 211, mainWindow: '1280×800 (no enforced minimum)' },
     measurements: pendingMeasurements(),
   };
 }

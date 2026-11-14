@@ -79,7 +79,7 @@ fn event_channel_names_match_adr004() {
         CHANNEL_PROVIDER_PROFILES_CHANGED,
         "provider://profiles-changed"
     );
-    assert_eq!(CORE_EVENT_CHANNELS.len(), 11);
+    assert_eq!(CORE_EVENT_CHANNELS.len(), 12);
     assert_eq!(HOST_EVENT_CHANNELS.len(), 6);
 }
 

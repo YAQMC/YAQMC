@@ -256,8 +256,8 @@
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,
-    "timeoutClass": "standard",
-    "timeoutMs": 30000
+    "timeoutClass": "long",
+    "timeoutMs": 120000
   },
   {
     "allowedOrigins": [
@@ -2330,6 +2330,18 @@
     ],
     "mainWindowOnly": true,
     "name": "plugin_bridge",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host"
+    ],
+    "mainWindowOnly": false,
+    "name": "plugin_local_files",
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,

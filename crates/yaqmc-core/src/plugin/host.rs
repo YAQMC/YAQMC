@@ -419,6 +419,15 @@ impl ExtensionHost {
         services.map_or(Ok((0, 0)), |services| services.inspect_cache(clear))
     }
 
+    pub(crate) fn local_files_bridge(&self) -> Option<super::local_files::LocalFilesBridge> {
+        self.provider_runtime
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .host_services
+            .as_ref()
+            .map(ComponentHostServices::local_files_bridge)
+    }
+
     pub fn attach_provider_runtime(
         &self,
         registry: Arc<ProviderRegistry>,
