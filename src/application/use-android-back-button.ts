@@ -10,6 +10,7 @@ import { closeLyricsPresentation } from './lyrics-presentation-actions';
 import { useLyricsStageStore } from './lyrics-stage-machine';
 import type { NavigationHistory } from './use-navigation-history';
 import { usePlayerStore } from './player-store';
+import { logger } from './logger';
 
 /** Hardware back unwinds overlays first, then in-app history, then exits the app. */
 export function useAndroidBackButton(
@@ -49,10 +50,12 @@ export function useAndroidBackButton(
       } else {
         void CapacitorApp.exitApp();
       }
-    }).then((listener) => {
-      if (disposed) void listener.remove();
-      else removeListener = listener.remove;
-    });
+    })
+      .then((listener) => {
+        if (disposed) void listener.remove();
+        else removeListener = () => listener.remove();
+      })
+      .catch((error: unknown) => logger.error('android.back-button', String(error)));
 
     return () => {
       disposed = true;

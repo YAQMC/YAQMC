@@ -47,11 +47,17 @@ Optional shortcuts are disabled by default:
 
 - `Ctrl+Alt+Space`: play/pause;
 - `Ctrl+Alt+Left`: previous;
-- `Ctrl+Alt+Right`: next.
+- `Ctrl+Alt+Right`: next;
+- `Ctrl+Alt+Up` / `Ctrl+Alt+Down`: raise/lower player volume by 5%, clamped to 0–100%.
 
-Registration is transactional; any conflict removes the partial registration and surfaces an error. The underlying
+Settings → Keyboard shortcuts records, clears and restores application, native global and active plugin bindings.
+Application defaults include Space, Command/Control+K, F11, Alt+Left/Right and Control+Up/Down; Escape always dismisses
+transient UI. Bindings persist and native globals are re-registered when changed. Conflicts are reported; successful
+registrations remain usable when only some globals are unavailable. The underlying
 Linux backend is X11-only, so it is not advertised on an actual native-Wayland window backend. MPRIS remains the
 media-key path there.
+
+Worker API v6 supports [plugin-owned shortcut commands and local playlist JSON management](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/plugin-shortcuts-playlists.md).
 
 Output devices use stable hashed IDs rather than display names. Switching opens the replacement sink first, reloads
 the prepared source, restores actual position/volume/play-pause state, and swaps only on success. Disappearing

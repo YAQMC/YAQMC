@@ -59,12 +59,12 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias:
       process.env.YAQMC_TARGET_PLATFORM === 'android'
-        ? {
-            './application/android-app': path.join(
-              repositoryRoot,
-              'src/application/android-app.native.ts',
-            ),
-          }
+        ? [
+            {
+              find: /^\.\/(?:application\/)?android-app$/,
+              replacement: path.join(repositoryRoot, 'src/application/android-app.native.ts'),
+            },
+          ]
         : undefined,
   },
   plugins: [developmentEntryPlugin(command), releasePublicAssetsPlugin(command), react()],

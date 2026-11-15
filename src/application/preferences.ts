@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
+import {
+  DEFAULT_SHORTCUTS,
+  DEFAULT_GLOBAL_SHORTCUTS,
+  normalizeShortcutBindings,
+  normalizeAccelerator,
+  type ShortcutBindings,
+} from '@yaqmc/client';
 import i18n, { LOCALE_CACHE_KEY, resolveLocale, type LocalePreference } from '../i18n';
 import { supportedLocales } from '../locales';
 import {
@@ -34,6 +41,19 @@ import { setNativeCarBluetoothLyrics } from './native-lyrics-bridge';
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
 
+function normalizePluginShortcutOverrides(value: unknown): Record<string, string | null> {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 256)
+      .filter(
+        ([key, binding]) =>
+          /^[A-Za-z0-9._-]{1,160}\/[A-Za-z0-9._-]{1,40}$/.test(key) &&
+          (binding === null || normalizeAccelerator(binding)),
+      ),
+  );
+}
+
 export type SecondaryLyricVisibility = 'auto' | 'show' | 'hide';
 export type LyricFontSize = 'small' | 'medium' | 'large';
 export type LyricCoverLayout = 'split' | 'full' | 'vinyl';
@@ -49,6 +69,9 @@ export type InterfaceFontFamily = 'application' | 'system' | 'serif' | 'monospac
 export type CloseBehavior = 'hide-to-tray' | 'quit';
 
 export interface SystemSettings {
+  shortcutBindings: ShortcutBindings;
+  globalShortcutBindings: ShortcutBindings;
+  pluginShortcutBindings: Record<string, string | null>;
   closeBehavior: CloseBehavior;
   globalShortcutsEnabled: boolean;
   deepLinksEnabled: boolean;
@@ -202,6 +225,9 @@ export const defaultPreferences: AppPreferences = {
     island: defaultSurface('island'),
   },
   system: {
+    shortcutBindings: DEFAULT_SHORTCUTS,
+    globalShortcutBindings: DEFAULT_GLOBAL_SHORTCUTS,
+    pluginShortcutBindings: {},
     closeBehavior: 'hide-to-tray',
     globalShortcutsEnabled: false,
     deepLinksEnabled: true,
@@ -390,6 +416,12 @@ export function normalizePreferences(value: unknown): AppPreferences {
       island: normalizeSurface(surfaces.island, 'island', legacyPreferences),
     },
     system: {
+      shortcutBindings: normalizeShortcutBindings(system.shortcutBindings),
+      globalShortcutBindings: normalizeShortcutBindings(
+        system.globalShortcutBindings,
+        DEFAULT_GLOBAL_SHORTCUTS,
+      ),
+      pluginShortcutBindings: normalizePluginShortcutOverrides(system.pluginShortcutBindings),
       closeBehavior: valueIn(system.closeBehavior, ['hide-to-tray', 'quit'], 'hide-to-tray'),
       globalShortcutsEnabled:
         typeof system.globalShortcutsEnabled === 'boolean' ? system.globalShortcutsEnabled : false,

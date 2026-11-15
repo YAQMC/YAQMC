@@ -101,6 +101,7 @@ import {
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
+import { ShortcutSettings } from '../components/ShortcutSettings';
 import {
   SurfaceCapabilityBanner,
   surfaceCapabilitiesFromDiagnostics,
@@ -1942,6 +1943,7 @@ export function SettingsPage() {
         )}
       </SettingsSection>
 
+      <ShortcutSettings />
       {host.windowControls && (
         <SettingsSection
           title={t('systemIntegration.title')}

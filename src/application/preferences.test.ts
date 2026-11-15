@@ -301,6 +301,9 @@ describe('preference persistence model', () => {
       globalShortcutsEnabled: true,
       deepLinksEnabled: true,
       clipboardDeepLinksEnabled: false,
+      shortcutBindings: defaultPreferences.system.shortcutBindings,
+      globalShortcutBindings: defaultPreferences.system.globalShortcutBindings,
+      pluginShortcutBindings: {},
     });
     expect(
       normalizePreferences({ system: { closeBehavior: 'invalid', globalShortcutsEnabled: 'yes' } })

@@ -132,6 +132,15 @@
   grid-template-columns: minmax(230px, 1fr) auto;
 }
 
+.shortcut-binding-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .settings-row--presets {
   grid-template-columns: 1fr;
   align-items: start;

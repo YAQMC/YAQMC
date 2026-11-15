@@ -31,8 +31,11 @@ SMTC 通过 Electron Main 注入的、不透明的主窗口 HWND 绑定。系统
 
 ## 快捷键与输出设备
 
-可选全局快捷键默认关闭：`Ctrl+Alt+Space`、`Ctrl+Alt+Left`、`Ctrl+Alt+Right`。注册是事务式的，
-任一冲突会撤销已注册部分。Linux 原生 Wayland 不宣传 X11 全局快捷键，媒体键通过 MPRIS 处理。
+可选全局快捷键默认关闭：`Ctrl+Alt+Space` 播放暂停、`Ctrl+Alt+Left/Right` 切歌，`Ctrl+Alt+Up/Down` 每次增减 5% 播放器音量，并限制在 0–100%。
+设置 → 键盘快捷键可录入、清除和恢复应用内、桌面全局及已启用插件的绑定，持久保存且修改后重新注册。
+应用内默认 Space 播放暂停、Cmd/Ctrl+K 搜索、F11 歌词全屏、Alt+左右切歌、Ctrl+上下调节音量；Esc 始终关闭临时界面。
+注册冲突会显示错误，部分全局键被占用时保留其他成功绑定。Linux 原生 Wayland 不宣传 X11 全局快捷键，媒体键通过 MPRIS 处理。
+Worker API v6 提供[插件自己的快捷键和本地歌单 JSON 管理](https://github.com/YAQMC/yaqmc-plugins/blob/main/docs/zh-CN/plugin-shortcuts-playlists.md)。
 
 输出设备使用稳定哈希 ID。切换时先打开新 sink，再恢复已准备音源、真实位置、音量和播放/暂停状态，
 成功后才交换；失败不破坏旧设备。设备消失时有限次尝试系统默认设备。

@@ -41,6 +41,8 @@ describe('FACT accelerators', () => {
       'control+alt+Space',
       'control+alt+ArrowLeft',
       'control+alt+ArrowRight',
+      'control+alt+ArrowUp',
+      'control+alt+ArrowDown',
     ]);
   });
 
@@ -52,6 +54,8 @@ describe('FACT accelerators', () => {
       'toggle',
       'previous',
       'next',
+      'volumeUp',
+      'volumeDown',
     ]);
   });
 });
@@ -81,12 +85,22 @@ describe('registerGlobalShortcuts', () => {
       'Control+Alt+Space',
       'Control+Alt+Left',
       'Control+Alt+Right',
+      'Control+Alt+Up',
+      'Control+Alt+Down',
     ]);
 
     shortcuts.callbacks.get('Control+Alt+Space')?.();
     shortcuts.callbacks.get('Control+Alt+Right')?.();
     shortcuts.callbacks.get('Control+Alt+Left')?.();
-    expect(invokePlayer.mock.calls).toEqual([['toggle'], ['next'], ['previous']]);
+    shortcuts.callbacks.get('Control+Alt+Up')?.();
+    shortcuts.callbacks.get('Control+Alt+Down')?.();
+    expect(invokePlayer.mock.calls).toEqual([
+      ['toggle'],
+      ['next'],
+      ['previous'],
+      ['volumeUp'],
+      ['volumeDown'],
+    ]);
   });
 
   it('logs registration failure and does not throw', () => {
@@ -141,6 +155,25 @@ describe('registerGlobalShortcuts', () => {
 });
 
 describe('createGlobalShortcutSession', () => {
+  it('rebinds changed preferences and removes disabled bindings without changing enable state', () => {
+    const shortcuts = mockGlobalShortcut();
+    const invokePlayer = vi.fn();
+    const session = createGlobalShortcutSession({
+      globalShortcut: shortcuts,
+      invokePlayer,
+      platform: () => 'win32',
+      wayland: () => false,
+    });
+    session.applyPreference(true);
+    session.applyPreference(true, { toggle: 'control+shift+P', volumeUp: null });
+    expect(shortcuts.callbacks.has('Control+Alt+Space')).toBe(false);
+    expect(shortcuts.callbacks.has('Control+Alt+Up')).toBe(false);
+    shortcuts.callbacks.get('Control+Shift+P')?.();
+    expect(invokePlayer).toHaveBeenCalledWith('toggle');
+    const count = vi.mocked(shortcuts.register).mock.calls.length;
+    session.applyPreference(true, { toggle: 'control+shift+P', volumeUp: null });
+    expect(vi.mocked(shortcuts.register).mock.calls.length).toBe(count);
+  });
   it('allows Windows to enable all three FACT accelerators', () => {
     const shortcuts = mockGlobalShortcut();
     const session = createGlobalShortcutSession({
@@ -159,6 +192,8 @@ describe('createGlobalShortcutSession', () => {
       'Control+Alt+Space',
       'Control+Alt+Left',
       'Control+Alt+Right',
+      'Control+Alt+Up',
+      'Control+Alt+Down',
     ]);
   });
 
@@ -173,7 +208,12 @@ describe('createGlobalShortcutSession', () => {
     });
     const status = session.setEnabled(true);
     expect(status.globalShortcutsEnabled).toBe(true);
-    expect(status.registered).toEqual(['control+alt+Space', 'control+alt+ArrowRight']);
+    expect(status.registered).toEqual([
+      'control+alt+Space',
+      'control+alt+ArrowRight',
+      'control+alt+ArrowUp',
+      'control+alt+ArrowDown',
+    ]);
     expect(status.failed).toEqual(['control+alt+ArrowLeft']);
     expect(status.shortcutError).toBe('shortcut conflict for control+alt+ArrowLeft');
     expect(log.warn).toHaveBeenCalled();

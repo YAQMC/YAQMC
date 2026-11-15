@@ -4,6 +4,9 @@ import { usePlayerStore } from './player-store';
 import { usePreferencesStore } from './preferences';
 import { lyricsEscapeAction, useLyricsPresentationStore } from './lyrics-presentation';
 import { exitLyricsFullscreen } from './lyrics-presentation-actions';
+import { matchesAccelerator, type ShortcutAction } from '@yaqmc/client';
+import { matchingPluginShortcut } from './plugin-shortcuts';
+import { dispatchPluginShortcut } from './plugin-runtime';
 
 interface GlobalShortcutActions {
   navigate: (route: AppRoute) => void;
@@ -24,16 +27,17 @@ export function useGlobalShortcuts({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.getModifierState?.('AltGraph'))
+        return;
       const target = event.target;
       const editing =
         target instanceof Element &&
-        target.matches('input, textarea, select, [contenteditable="true"]');
+        Boolean(
+          target.closest(
+            'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+          ),
+        );
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
-        event.preventDefault();
-        navigate({ page: 'search' });
-        return;
-      }
       if (event.key === 'Escape') {
         const action = lyricsEscapeAction({
           lyricsOpen,
@@ -46,14 +50,34 @@ export function useGlobalShortcuts({
         else usePlayerStore.getState().closePanels();
         return;
       }
-      if (event.key === 'F11' && lyricsOpen) {
+      const bindings = usePreferencesStore.getState().system.shortcutBindings;
+      const action = (Object.keys(bindings) as ShortcutAction[]).find(
+        (key) => bindings[key] && matchesAccelerator(event, bindings[key]!),
+      );
+      if (editing && action !== 'search') return;
+      const interactive = target instanceof Element && target.closest('button, a, [role="button"]');
+      if (interactive && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey)
+        return;
+      if (action) {
+        if (action === 'fullscreen' && !lyricsOpen) return;
         event.preventDefault();
-        if (!event.repeat) toggleLyricsFullscreen();
+        if (event.repeat && action !== 'volumeUp' && action !== 'volumeDown') return;
+        const player = usePlayerStore.getState();
+        if (action === 'search') navigate({ page: 'search' });
+        else if (action === 'toggle') player.togglePlayback();
+        else if (action === 'previous') player.previous();
+        else if (action === 'next') player.next();
+        else if (action === 'fullscreen') toggleLyricsFullscreen();
+        else
+          player.setVolume(
+            Math.max(0, Math.min(1, player.volume + (action === 'volumeUp' ? 0.05 : -0.05))),
+          );
         return;
       }
-      if (!editing && event.code === 'Space') {
+      const plugin = matchingPluginShortcut(event);
+      if (plugin) {
         event.preventDefault();
-        usePlayerStore.getState().togglePlayback();
+        if (!event.repeat) dispatchPluginShortcut(plugin.pluginId, plugin.id);
       }
     };
 

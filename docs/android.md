@@ -39,8 +39,11 @@ before building YAQMC. Older snapshot packages lack the required renderer settin
 - Update checks only notify and open the matching GitHub Release in the system browser. YAQMC does not download or
   install APKs itself.
 
-Tray controls, global shortcuts, the loopback Local API, file exports and loading unpacked plugin folders are
-intentionally absent from Android. The in-app lyric screen remains available.
+Tray controls, global shortcuts, the loopback Local API and loading unpacked plugin folders are intentionally
+absent from Android. In-app keyboard shortcuts work with an external keyboard. Plugin API v5/v6 can export files
+through user-selected SAF handles, including the local playlist example. The in-app lyric screen remains available.
+System Back dismisses transient player/account/comment surfaces, then unwinds application history, then closes
+the Activity at the root. Android builds use the native Capacitor lifecycle adapter for this listener.
 
 ## Plugins
 

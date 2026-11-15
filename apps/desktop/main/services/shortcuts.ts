@@ -1,16 +1,17 @@
-/**
- * Canonical play-pause, previous, and next accelerators. Not user-configurable.
- */
+import { DEFAULT_GLOBAL_SHORTCUTS, normalizeShortcutBindings } from '@yaqmc/client';
+/** Default native accelerators; users may replace or disable each binding. */
 export const FACT_SHORTCUT_ACCELERATORS = [
   'control+alt+Space',
   'control+alt+ArrowLeft',
   'control+alt+ArrowRight',
+  'control+alt+ArrowUp',
+  'control+alt+ArrowDown',
 ] as const;
 
-export type ShortcutAction = 'toggle' | 'previous' | 'next';
+export type ShortcutAction = 'toggle' | 'previous' | 'next' | 'volumeUp' | 'volumeDown';
 
 export type ShortcutBinding = {
-  fact: (typeof FACT_SHORTCUT_ACCELERATORS)[number];
+  fact: string;
   accelerator: string;
   action: ShortcutAction;
 };
@@ -29,6 +30,11 @@ export function toElectronAccelerator(fact: string): string {
       if (token === 'alt') {
         return 'Alt';
       }
+      if (token === 'mod') return 'CommandOrControl';
+      if (token === 'meta') return 'Super';
+      if (token === 'shift') return 'Shift';
+      if (token === 'ArrowUp') return 'Up';
+      if (token === 'ArrowDown') return 'Down';
       if (token === 'ArrowLeft') {
         return 'Left';
       }
@@ -56,6 +62,8 @@ export const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     accelerator: toElectronAccelerator('control+alt+ArrowRight'),
     action: 'next',
   },
+  { fact: 'control+alt+ArrowUp', accelerator: 'Control+Alt+Up', action: 'volumeUp' },
+  { fact: 'control+alt+ArrowDown', accelerator: 'Control+Alt+Down', action: 'volumeDown' },
 ];
 
 export type GlobalShortcutApi = {
@@ -70,6 +78,7 @@ export type ShortcutLogger = {
 };
 
 export type RegisterShortcutsOptions = {
+  bindings?: readonly ShortcutBinding[];
   globalShortcut: GlobalShortcutApi;
   invokePlayer: (method: ShortcutAction) => void | Promise<void>;
   platform?: NodeJS.Platform | string;
@@ -106,7 +115,7 @@ export function registerGlobalShortcuts(options: RegisterShortcutsOptions): Shor
     return { registered, failed };
   }
 
-  for (const binding of SHORTCUT_BINDINGS) {
+  for (const binding of options.bindings ?? SHORTCUT_BINDINGS) {
     try {
       const ok = options.globalShortcut.register(binding.accelerator, () => {
         void Promise.resolve(options.invokePlayer(binding.action)).catch((error: unknown) => {
@@ -159,7 +168,7 @@ export type ShortcutSessionStatus = {
 
 export type GlobalShortcutSession = {
   setEnabled(enabled: boolean): ShortcutSessionStatus;
-  applyPreference(enabled: boolean): ShortcutSessionStatus;
+  applyPreference(enabled: boolean, bindings?: unknown): ShortcutSessionStatus;
   status(): ShortcutSessionStatus;
   dispose(): void;
 };
@@ -181,6 +190,7 @@ export function createGlobalShortcutSession(options: {
   log?: ShortcutLogger;
 }): GlobalShortcutSession {
   let appliedEnabled = false;
+  let bindings = [...SHORTCUT_BINDINGS];
   let last: ShortcutSessionStatus = {
     globalShortcutsSupported: false,
     globalShortcutsEnabled: false,
@@ -203,7 +213,7 @@ export function createGlobalShortcutSession(options: {
     last = {
       globalShortcutsSupported: supported(),
       globalShortcutsEnabled: partial.globalShortcutsEnabled,
-      globalShortcuts: [...FACT_SHORTCUT_ACCELERATORS],
+      globalShortcuts: bindings.map((binding) => binding.fact),
       shortcutError: partial.shortcutError,
       registered: partial.registered ?? last.registered,
       failed: partial.failed ?? last.failed,
@@ -238,6 +248,7 @@ export function createGlobalShortcutSession(options: {
     }
 
     const result = registerGlobalShortcuts({
+      bindings,
       globalShortcut: options.globalShortcut,
       invokePlayer: options.invokePlayer,
       platform: options.platform(),
@@ -245,7 +256,7 @@ export function createGlobalShortcutSession(options: {
       log: options.log,
     });
     const error = result.failed.length > 0 ? conflictMessage(result.failed) : null;
-    if (result.registered.length === 0) {
+    if (bindings.length > 0 && result.registered.length === 0) {
       snapshot({
         globalShortcutsEnabled: false,
         shortcutError: error ?? 'globalShortcut.register() failed',
@@ -265,8 +276,22 @@ export function createGlobalShortcutSession(options: {
 
   return {
     setEnabled,
-    applyPreference(enabled: boolean): ShortcutSessionStatus {
-      if (enabled === appliedEnabled) {
+    applyPreference(enabled: boolean, raw?: unknown): ShortcutSessionStatus {
+      const map = normalizeShortcutBindings(raw, DEFAULT_GLOBAL_SHORTCUTS);
+      const next = (['toggle', 'previous', 'next', 'volumeUp', 'volumeDown'] as const).flatMap(
+        (action) =>
+          map[action]
+            ? [{ action, fact: map[action]!, accelerator: toElectronAccelerator(map[action]!) }]
+            : [],
+      );
+      const changed =
+        next.length !== bindings.length ||
+        next.some(
+          (binding, index) =>
+            binding.action !== bindings[index]?.action || binding.fact !== bindings[index]?.fact,
+        );
+      bindings = next;
+      if (enabled === appliedEnabled && !changed) {
         return {
           ...last,
           globalShortcutsSupported: supported(),

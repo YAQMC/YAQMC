@@ -63,6 +63,7 @@ import {
   probeLinuxDisplayBackend,
   readLinuxFdTargets,
   shortcutsEnabledFromPreferences,
+  shortcutBindingsFromPreferences,
 } from './platform-diagnostics';
 import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
@@ -512,6 +513,7 @@ const hostHandlers = createHostHandlers({
       trayError,
       globalShortcutsSupported: !isNativeWaylandDisplayBackend(displayBackend),
       globalShortcutsEnabled: shortcuts.globalShortcutsEnabled,
+      globalShortcuts: shortcuts.globalShortcuts,
       shortcutError: shortcuts.shortcutError,
     };
   },
@@ -811,10 +813,27 @@ function quitWith(code: number): void {
   app.quit();
 }
 
-function invokePlayer(method: 'toggle' | 'next' | 'previous'): Promise<void> | undefined {
+let volumeShortcutQueue = Promise.resolve();
+function invokePlayer(
+  method: 'toggle' | 'next' | 'previous' | 'volumeUp' | 'volumeDown',
+): Promise<void> | undefined {
   const client = supervisor?.client;
   if (!client) {
     return undefined;
+  }
+  if (method === 'volumeUp' || method === 'volumeDown') {
+    volumeShortcutQueue = volumeShortcutQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const snapshot = (await client.invoke('player_snapshot')) as { volume: number };
+        await client.invoke('player_set_volume', {
+          volume: Math.max(
+            0,
+            Math.min(1, snapshot.volume + (method === 'volumeUp' ? 0.05 : -0.05)),
+          ),
+        });
+      });
+    return volumeShortcutQueue;
   }
   return client.invoke(playerInvokeMethod(method)).then(() => undefined);
 }
@@ -1290,7 +1309,10 @@ function applyShortcutsFromPreferences(raw: unknown): void {
   if (__YAQMC_QA_BUILD__ && smoke) {
     return;
   }
-  shortcutSession.applyPreference(shortcutsEnabledFromPreferences(raw));
+  shortcutSession.applyPreference(
+    shortcutsEnabledFromPreferences(raw),
+    shortcutBindingsFromPreferences(raw),
+  );
 }
 
 function installTrayAndShortcuts(): void {

@@ -26,6 +26,9 @@ pub enum PluginPermission {
     FilesRead,
     FilesWrite,
     ProviderLocalFiles,
+    ShortcutsRegister,
+    PlaylistsRead,
+    PlaylistsWrite,
     Network,
     ProviderCatalog,
     ProviderPlayback,
@@ -81,6 +84,12 @@ pub const V3_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::ProviderAccount,
 ];
 
+pub const V6_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::ShortcutsRegister,
+    PluginPermission::PlaylistsRead,
+    PluginPermission::PlaylistsWrite,
+];
+
 const RESERVED: &[&str] = &[
     "network",
     "filesystem",
@@ -123,6 +132,9 @@ impl PluginPermission {
             Self::FilesRead => "files.read",
             Self::FilesWrite => "files.write",
             Self::ProviderLocalFiles => "provider.localFiles",
+            Self::ShortcutsRegister => "shortcuts.register",
+            Self::PlaylistsRead => "playlists.read",
+            Self::PlaylistsWrite => "playlists.write",
             Self::Network => "network",
             Self::ProviderCatalog => "provider.catalog",
             Self::ProviderPlayback => "provider.playback",
@@ -156,6 +168,9 @@ impl PluginPermission {
             Self::FilesRead => "Read files and folders selected by the user",
             Self::FilesWrite => "Modify and delete files in user-selected locations",
             Self::ProviderLocalFiles => "Read and play audio from user-selected folders",
+            Self::ShortcutsRegister => "Register application shortcuts for this plugin",
+            Self::PlaylistsRead => "Read this plugin's local playlists",
+            Self::PlaylistsWrite => "Manage this plugin's local playlists",
             Self::Network => "Scoped HTTPS network access",
             Self::ProviderCatalog => "Provide catalog and discovery data",
             Self::ProviderPlayback => "Resolve playable sources",
@@ -177,6 +192,7 @@ impl PluginPermission {
                 | Self::FilesRead
                 | Self::FilesWrite
                 | Self::ProviderLocalFiles
+                | Self::PlaylistsWrite
         )
     }
 }
@@ -208,6 +224,7 @@ pub fn parse_permission(
         .chain(V3_PERMISSIONS.iter())
         .chain(V4_PERMISSIONS.iter())
         .chain(V5_PERMISSIONS.iter())
+        .chain(V6_PERMISSIONS.iter())
     {
         if permission.as_str() == value {
             return Ok((*permission, None));
@@ -234,6 +251,7 @@ pub fn permission_allowed_for_api(permission: PluginPermission, api_version: u32
                 || V4_PERMISSIONS.contains(&permission)
         }
         5 => permission_allowed_for_api(permission, 4) || V5_PERMISSIONS.contains(&permission),
+        6 => permission_allowed_for_api(permission, 5) || V6_PERMISSIONS.contains(&permission),
         _ => false,
     }
 }
@@ -325,6 +343,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn command_and_playlist_permissions_require_worker_v6() {
+        for permission in V6_PERMISSIONS {
+            assert_eq!(
+                parse_permission(permission.as_str()).unwrap().0,
+                *permission
+            );
+            for version in 1..6 {
+                assert!(!permission_allowed_for_api(*permission, version));
+            }
+            assert!(permission_allowed_for_api(*permission, 6));
+        }
+        assert!(PluginPermission::PlaylistsWrite.sensitive());
+    }
+
+    #[test]
     fn file_permissions_require_v5_and_are_sensitive() {
         for (name, permission) in [
             ("files.read", PluginPermission::FilesRead),
@@ -332,8 +365,9 @@ mod tests {
         ] {
             assert_eq!(parse_permission(name).unwrap(), (permission, None));
             assert!(permission_allowed_for_api(permission, 5));
+            assert!(permission_allowed_for_api(permission, 6));
             assert!(permission.sensitive());
-            for version in [1, 2, 3, 4, 6] {
+            for version in [1, 2, 3, 4, 7] {
                 assert!(!permission_allowed_for_api(permission, version));
             }
         }
@@ -431,7 +465,7 @@ mod tests {
             assert_eq!(parse_permission(name).unwrap(), (permission, None));
             assert!(permission_allowed_for_api(permission, 4));
             assert!(permission_allowed_for_api(permission, 5));
-            for older in [1, 2, 3, 6] {
+            for older in [1, 2, 3, 7] {
                 assert!(!permission_allowed_for_api(permission, older));
             }
             assert!(!permission.sensitive());

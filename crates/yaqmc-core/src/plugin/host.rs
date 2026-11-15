@@ -27,6 +27,7 @@ use crate::plugin::{
 };
 use yaqmc_provider_api::{ProviderCapabilitySummary, ProviderRegistry};
 
+mod playlists;
 mod updates;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1827,6 +1828,7 @@ impl ExtensionHost {
             inner.storage.remove(id);
             inner.settings.remove(id);
             let _ = fs::remove_file(self.root.join(format!("{id}.storage.json")));
+            let _ = fs::remove_file(self.root.join(format!("{id}.playlists.json")));
             let _ = fs::remove_file(self.root.join(format!("{id}.settings.json")));
             let _ = fs::remove_file(self.root.join(format!("{id}.secrets.json")));
         }

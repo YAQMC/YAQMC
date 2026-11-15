@@ -97,3 +97,15 @@ export {
 export type * from './protocol/dto';
 export type * from './protocol/plugin-updates';
 export type * from './protocol/app-updates';
+export {
+  SHORTCUT_ACTIONS,
+  DEFAULT_SHORTCUTS,
+  DEFAULT_GLOBAL_SHORTCUTS,
+  normalizeAccelerator,
+  normalizeShortcutBindings,
+  keyboardAccelerator,
+  matchesAccelerator,
+  acceleratorIdentity,
+  type ShortcutAction,
+  type ShortcutBindings,
+} from './shortcuts';

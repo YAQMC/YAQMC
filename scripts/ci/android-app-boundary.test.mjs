@@ -34,10 +34,13 @@ test('Android builds keep the real Capacitor lifecycle adapter', async () => {
       { command: 'build', mode: 'production' },
       path.resolve('vite.config.ts'),
     );
-    assert.equal(
-      loaded.config.resolve.alias['./application/android-app'],
-      path.resolve('src/application/android-app.native.ts'),
-    );
+    for (const specifier of ['./android-app', './application/android-app']) {
+      const rule = loaded.config.resolve.alias.find(
+        (alias) => alias.find instanceof RegExp && alias.find.test(specifier),
+      );
+      assert.ok(rule, `missing native alias for ${specifier}`);
+      assert.equal(rule.replacement, path.resolve('src/application/android-app.native.ts'));
+    }
   } finally {
     if (previous === undefined) delete process.env.YAQMC_TARGET_PLATFORM;
     else process.env.YAQMC_TARGET_PLATFORM = previous;

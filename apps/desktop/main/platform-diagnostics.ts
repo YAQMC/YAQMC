@@ -16,6 +16,7 @@ export type HostPlatformFacts = {
   trayError: string | null;
   globalShortcutsSupported: boolean;
   globalShortcutsEnabled: boolean;
+  globalShortcuts?: string[];
   shortcutError?: string | null;
 };
 
@@ -121,6 +122,13 @@ export function shortcutsEnabledFromPreferences(raw: unknown): boolean {
   return (system as { globalShortcutsEnabled?: unknown }).globalShortcutsEnabled === true;
 }
 
+export function shortcutBindingsFromPreferences(raw: unknown): unknown {
+  const system = preferencesObject(raw)?.system;
+  return system && typeof system === 'object'
+    ? (system as { globalShortcutBindings?: unknown }).globalShortcutBindings
+    : undefined;
+}
+
 export function desktopIntegrationFromFacts(facts: HostPlatformFacts): {
   trayAvailable: boolean;
   trayError: string | null;
@@ -134,7 +142,7 @@ export function desktopIntegrationFromFacts(facts: HostPlatformFacts): {
     trayError: facts.trayError,
     globalShortcutsSupported: facts.globalShortcutsSupported,
     globalShortcutsEnabled: facts.globalShortcutsEnabled,
-    globalShortcuts: [...FACT_SHORTCUT_ACCELERATORS],
+    globalShortcuts: [...(facts.globalShortcuts ?? FACT_SHORTCUT_ACCELERATORS)],
     shortcutError: facts.shortcutError ?? null,
   };
 }

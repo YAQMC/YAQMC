@@ -6,7 +6,7 @@ use crate::plugin::permissions::{parse_permission, permission_allowed_for_api, P
 
 pub const LEGACY_MANIFEST_VERSION: u32 = 1;
 pub const CURRENT_MANIFEST_VERSION: u32 = 2;
-pub const CURRENT_API_VERSION: u32 = 5;
+pub const CURRENT_API_VERSION: u32 = 6;
 pub const MIN_API_VERSION: u32 = 1;
 pub const PROVIDER_WIT_VERSION: &str = "0.1.0";
 pub const PROVIDER_WIT_WORLD: &str = "provider";
@@ -916,7 +916,10 @@ mod tests {
     #[test]
     fn future_api_permissions_install_as_incompatible_instead_of_malformed() {
         let future = valid_json()
-            .replace("\"apiVersion\": 1", "\"apiVersion\": 6")
+            .replace(
+                "\"apiVersion\": 1",
+                &format!("\"apiVersion\": {}", CURRENT_API_VERSION + 1),
+            )
             .replace(
                 r#""entrypoints": { "styles": ["styles/main.css"] }"#,
                 r#""entrypoints": { "script": "dist/main.js" },
@@ -933,7 +936,10 @@ mod tests {
             .compatibility_issue()
             .is_some());
         // A supported API still rejects permissions it does not define.
-        let unknown = future.replace("\"apiVersion\": 6", "\"apiVersion\": 5");
+        let unknown = future.replace(
+            &format!("\"apiVersion\": {}", CURRENT_API_VERSION + 1),
+            &format!("\"apiVersion\": {CURRENT_API_VERSION}"),
+        );
         assert_eq!(
             PluginManifest::parse(unknown.as_bytes()).unwrap_err(),
             ManifestError::UnknownPermission

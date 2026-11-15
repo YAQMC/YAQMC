@@ -3,6 +3,7 @@ import type { DeepLinkRegistrationStatus } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { hasHostCapability } from './host-capabilities';
+import { usePreferencesStore } from './preferences';
 
 const client = getYaqmcClient();
 
@@ -125,11 +126,25 @@ export function usePlatformIntegration() {
     if (!isNativeRuntime) return;
     setError(null);
     try {
-      setDiagnostics(await readPlatformDiagnostics());
+      const next = await readPlatformDiagnostics();
+      setDiagnostics(next);
+      if (next?.desktopIntegration.shortcutError) setError(next.desktopIntegration.shortcutError);
     } catch (caught) {
       setError(String(caught));
     }
   }, []);
+
+  useEffect(() => {
+    if (!isNativeRuntime || !hasHostCapability('windowControls')) return;
+    let previous = JSON.stringify(usePreferencesStore.getState().system.globalShortcutBindings);
+    return client.on('preferences://changed', () => {
+      const next = JSON.stringify(usePreferencesStore.getState().system.globalShortcutBindings);
+      if (next !== previous) {
+        previous = next;
+        void refresh();
+      }
+    });
+  }, [refresh]);
 
   useEffect(() => {
     if (!isNativeRuntime) return;

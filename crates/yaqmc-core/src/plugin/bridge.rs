@@ -14,6 +14,10 @@ fn is_page_ui_method(method: &str) -> bool {
         || method.starts_with("ui.navigation.")
         || method.starts_with("ui.layout.")
         || method.starts_with("ui.lyrics.")
+        || matches!(
+            method,
+            "shortcuts.register" | "shortcuts.unregister" | "shortcuts.list"
+        )
 }
 
 pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, String> {
@@ -22,7 +26,18 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
         "lyrics.get" | "lyrics.read" => Ok(Some(PluginPermission::LyricsRead)),
         "player.get" | "player.read" => Ok(Some(PluginPermission::PlayerRead)),
         "player.play" | "player.pause" | "player.toggle" | "player.next" | "player.previous"
-        | "player.seek" => Ok(Some(PluginPermission::PlayerControl)),
+        | "player.seek" | "player.setVolume" | "player.toggleMuted" => {
+            Ok(Some(PluginPermission::PlayerControl))
+        }
+        "shortcuts.register" | "shortcuts.unregister" | "shortcuts.list" | "shortcuts.set" => {
+            Ok(Some(PluginPermission::ShortcutsRegister))
+        }
+        "playlists.list" | "playlists.get" | "playlists.export" => {
+            Ok(Some(PluginPermission::PlaylistsRead))
+        }
+        "playlists.create" | "playlists.update" | "playlists.remove" | "playlists.import" => {
+            Ok(Some(PluginPermission::PlaylistsWrite))
+        }
         "theme.get" => Ok(Some(PluginPermission::ThemeRead)),
         "storage.get" | "storage.set" | "settings.get" | "settings.set" => {
             Ok(Some(PluginPermission::PluginStorage))
@@ -163,6 +178,9 @@ async fn dispatch_active_bridge(
                 | "ui.sidebar.register"
                 | "files.capabilities"
                 | "files.close"
+                | "playlists.list"
+                | "playlists.get"
+                | "playlists.export"
         )
     {
         return Err("update-validation-in-progress".into());
@@ -192,6 +210,8 @@ async fn dispatch_active_bridge(
         "player"
     } else if request.method.starts_with("storage.") || request.method.starts_with("settings.") {
         "storage"
+    } else if request.method.starts_with("playlists.") {
+        "playlists"
     } else if request.method.starts_with("log.") {
         "log"
     } else if request.method.starts_with("network.") {
@@ -205,6 +225,7 @@ async fn dispatch_active_bridge(
         "player.seek" => 4,
         "player" => 8,
         "storage" => 20,
+        "playlists" => 8,
         "log" => 10,
         "network" => 4,
         "notify" => 4,
@@ -213,6 +234,22 @@ async fn dispatch_active_bridge(
     host.rate_limit(&runtime.plugin_id, rate_key, limit)
         .map_err(|error| error.to_string())?;
     match request.method.as_str() {
+        method if method.starts_with("playlists.") => {
+            host.playlists_call(&runtime.plugin_id, method, &request.payload)
+        }
+        method if method.starts_with("shortcuts.") => {
+            validate_shortcut(method, &request.payload)?;
+            Ok(json!({"ok":true}))
+        }
+        "player.setVolume" => {
+            let volume = request.payload["volume"].as_f64().ok_or("invalid-volume")?;
+            player.set_volume(volume).await.map_err(|e| e.to_string())?;
+            Ok(json!({"ok":true}))
+        }
+        "player.toggleMuted" => {
+            player.toggle_muted().await.map_err(|e| e.to_string())?;
+            Ok(json!({"ok":true}))
+        }
         // Native hosts own the system picker and opaque handles. This only authorizes one call;
         // no path or URI supplied by a script is ever used by Core as a filesystem capability.
         method if method.starts_with("files.") => {
@@ -441,6 +478,41 @@ async fn dispatch_active_bridge(
         }
         _ => Err("unknown plugin API method".into()),
     }
+}
+
+fn validate_shortcut(method: &str, payload: &Value) -> Result<(), String> {
+    if method == "shortcuts.list" {
+        return Ok(());
+    }
+    let invalid = || "shortcuts.invalid-command".to_owned();
+    let id = payload["id"].as_str().ok_or_else(invalid)?;
+    if id.is_empty()
+        || id.len() > 40
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    {
+        return Err(invalid());
+    }
+    if method == "shortcuts.unregister" {
+        return Ok(());
+    }
+    if method == "shortcuts.register" {
+        let label = payload["label"].as_str().ok_or_else(invalid)?;
+        if label.trim().is_empty()
+            || label.chars().count() > 60
+            || label.chars().any(char::is_control)
+        {
+            return Err(invalid());
+        }
+    }
+    match payload.get("accelerator") {
+        Some(Value::Null) => (),
+        Some(Value::String(value))
+            if value.len() <= 80 && value.is_ascii() && !value.chars().any(char::is_control) => {}
+        _ => return Err(invalid()),
+    }
+    Ok(())
 }
 
 #[cfg(test)]

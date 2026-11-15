@@ -1,4 +1,9 @@
 import { useEffect } from 'react';
+import {
+  applyPluginShortcutCall,
+  clearPluginShortcuts,
+  activatePluginShortcuts,
+} from './plugin-shortcuts';
 import { clearPluginSongBadges, replacePluginSongBadges } from './plugin-song-badges';
 import { invalidatePluginAssets, syncPluginAssetAccess } from './plugin-asset';
 import type { ActiveSongBadge, PluginUpdateOperation, PluginReleaseInfo } from '@yaqmc/client';
@@ -491,6 +496,22 @@ self.onmessage = function (event) {
   }
 };
 var ctx = {
+  shortcuts: {
+    register: function (command) { return __yaqmcCall('shortcuts.register', command); },
+    unregister: function (id) { return __yaqmcCall('shortcuts.unregister', { id: id }); },
+    list: function () { return __yaqmcCall('shortcuts.list'); },
+    set: function (id, accelerator) { return __yaqmcCall('shortcuts.set', { id: id, accelerator: accelerator }); },
+    onTriggered: function (id, handler) { return ctx.events.on('shortcut.triggered', function (event) { if (event.id === id) handler(event); }); }
+  },
+  playlists: {
+    list: function () { return __yaqmcCall('playlists.list'); },
+    get: function (id) { return __yaqmcCall('playlists.get', { id: id }); },
+    create: function (playlist) { return __yaqmcCall('playlists.create', playlist); },
+    update: function (id, playlist) { return __yaqmcCall('playlists.update', Object.assign({}, playlist, { id: id })); },
+    remove: function (id) { return __yaqmcCall('playlists.remove', { id: id }); },
+    import: function (document) { return __yaqmcCall('playlists.import', { document: document }); },
+    export: function (id) { return __yaqmcCall('playlists.export', { id: id }); }
+  },
   plugin: { id: ${idLiteral} },
   events: {
     on: function (event, handler) {
@@ -509,6 +530,8 @@ var ctx = {
     read: function () { return __yaqmcCall('lyrics.read'); }
   },
   player: {
+    setVolume: function (volume) { return __yaqmcCall('player.setVolume', { volume: volume }); },
+    toggleMuted: function () { return __yaqmcCall('player.toggleMuted'); },
     get: function () { return __yaqmcCall('player.get'); },
     read: function () { return __yaqmcCall('player.read'); },
     play: function () { return __yaqmcCall('player.play'); },
@@ -721,6 +744,7 @@ function toPluginPreset(scene: ActiveSceneResource): LyricsPresetDefinition | nu
 }
 
 function stopScripts(): void {
+  clearPluginShortcuts();
   invalidatePluginAssets();
   runtimeGeneration += 1;
   for (const worker of workers.values()) {
@@ -743,6 +767,7 @@ async function stopPluginRuntime(token: string): Promise<void> {
 }
 
 async function retireOnePlugin(id: string): Promise<void> {
+  clearPluginShortcuts(id);
   invalidatePluginAssets(id);
   clearPluginSongBadges(id);
   pluginEpochs.set(id, (pluginEpochs.get(id) ?? 0) + 1);
@@ -786,7 +811,7 @@ function applyBridgeSideEffect(
   method: string,
   payload: unknown,
   value: unknown,
-): void {
+): unknown {
   const result = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   if (result.ok !== true) return;
   const pluginName = script.pluginName ?? script.pluginId;
@@ -1001,11 +1026,19 @@ async function startScripts(
             if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
             const effect = () =>
               applyBridgeSideEffect(script, data.method ?? '', data.payload, value);
-            if (updatingPlugins.has(script.pluginId)) {
+            if (data.method?.startsWith('shortcuts.')) {
+              value = applyPluginShortcutCall(
+                script.pluginId,
+                script.pluginName ?? script.pluginId,
+                data.method,
+                data.payload,
+                updatingPlugins.has(script.pluginId),
+              );
+            } else if (updatingPlugins.has(script.pluginId)) {
               const effects = stagedEffects.get(script.pluginId) ?? [];
               effects.push(effect);
               stagedEffects.set(script.pluginId, effects);
-            } else effect();
+            } else value = effect() ?? value;
             worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: true, value });
           })
           .catch((error: unknown) => {
@@ -1122,6 +1155,11 @@ function emitToPlugins(event: string, payload: unknown): void {
  */
 function emitToPlugin(pluginId: string, event: string, payload: unknown): void {
   workers.get(pluginId)?.postMessage({ type: 'yaqmc/event', event, payload });
+}
+
+export function dispatchPluginShortcut(pluginId: string, id: string): void {
+  if (workerPermissions.get(pluginId)?.has('shortcuts.register'))
+    emitToPlugin(pluginId, 'shortcut.triggered', { id });
 }
 
 export function dispatchPluginUiAction(pluginId: string, actionId: string, slot: string): void {
@@ -1561,6 +1599,7 @@ export async function handlePluginUpdateProgress(operation: PluginUpdateOperatio
     if (operation.phase === 'completed' && preview.enabled) {
       for (const effect of stagedEffects.get(id) ?? []) effect();
       stagedEffects.delete(id);
+      activatePluginShortcuts(id);
     } else await retireOnePlugin(id);
     await applyPluginResources();
   }
