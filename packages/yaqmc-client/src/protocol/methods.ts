@@ -120,6 +120,7 @@ export const MIGRATED_METHOD_NAMES = [
   'provider_area',
   'provider_library',
   'provider_search',
+  'provider_search_cancel',
   'provider_song',
   'provider_album',
   'provider_artist',
@@ -359,7 +360,9 @@ export type MethodParams = Exhaustive<{
     kind: CatalogSearchKind;
     page: number;
     limit: number;
+    requestId?: string;
   };
+  provider_search_cancel: { providerId: string; profileId?: string; requestId: string };
   provider_song: { providerId: string; profileId?: string; id: string };
   provider_album: { providerId: string; profileId?: string; id: string };
   provider_artist: { providerId: string; profileId?: string; id: string };
@@ -488,7 +491,13 @@ export type MethodParams = Exhaustive<{
   qqmusic_discover: { refresh: boolean };
   qqmusic_area: { encArea: string };
   qqmusic_library: void;
-  qqmusic_search: { query: string; kind: CatalogSearchKind; page: number; limit: number };
+  qqmusic_search: {
+    query: string;
+    kind: CatalogSearchKind;
+    page: number;
+    limit: number;
+    requestId?: string;
+  };
   qqmusic_song: { id: string };
   qqmusic_album: { id: string };
   qqmusic_artist: { id: string };
@@ -694,6 +703,7 @@ export type MethodResult = Exhaustive<{
   provider_area: AreaFeed;
   provider_library: LibrarySnapshot;
   provider_search: SearchResult;
+  provider_search_cancel: void;
   provider_song: Song;
   provider_album: Album;
   provider_artist: Artist;

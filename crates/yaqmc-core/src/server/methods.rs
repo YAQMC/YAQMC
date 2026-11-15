@@ -64,6 +64,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "provider_area",
     "provider_library",
     "provider_search",
+    "provider_search_cancel",
     "provider_song",
     "provider_album",
     "provider_artist",
@@ -345,7 +346,7 @@ fn default_qqmusic_profile() -> ProviderProfileKey {
         .expect("the built-in QQ Music default profile key is valid")
 }
 
-fn comment_read<'a>(
+fn cancellable_read<'a>(
     core: &'a CoreHandle,
     params: &Value,
     scope: &ProviderProfileKey,
@@ -354,11 +355,7 @@ fn comment_read<'a>(
     let request_id = match params.get("requestId") {
         None => None,
         Some(Value::String(id)) => Some(id.as_str()),
-        _ => {
-            return Err(DispatchError::InvalidParams(
-                "invalid comment request ID".into(),
-            ))
-        }
+        _ => return Err(DispatchError::InvalidParams("invalid request ID".into())),
     };
     provider_command(core.comment_requests.begin(scope, origin, request_id))
 }
@@ -725,7 +722,21 @@ async fn invoke_core(
                 &provider_id,
                 require_catalog_provider_for_profile
             );
-            provider(catalog.catalog_search(query, kind, page, limit).await)
+            let scope = provider_scope(core, &params)?;
+            let read = cancellable_read(core, &params, &scope, origin)?;
+            provider(tokio::select! {
+                biased;
+                _ = read.token.cancelled() => Err(ProviderCommandError::adapter("search cancelled")),
+                result = catalog.catalog_search(query, kind, page, limit) => result,
+            })
+        }
+        "provider_search_cancel" => {
+            let scope = provider_scope(core, &params)?;
+            let id = params
+                .get("requestId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| DispatchError::InvalidParams("missing search request ID".into()))?;
+            provider(core.comment_requests.cancel(&scope, origin, id))
         }
         "provider_song" => {
             let ProviderEntityParams {
@@ -803,7 +814,7 @@ async fn invoke_core(
                 require_lyrics_provider_for_profile
             );
             let scope = provider_scope(core, &params)?;
-            let read = comment_read(core, &params, &scope, origin)?;
+            let read = cancellable_read(core, &params, &scope, origin)?;
             provider(tokio::select! {
                 biased;
                 _ = read.token.cancelled() => Err(ProviderCommandError::adapter("lyric read cancelled")),
@@ -826,7 +837,7 @@ async fn invoke_core(
                 return provider::<yaqmc_provider_api::SongCommentsPage>(Err(error));
             }
             let scope = provider_scope(core, &params)?;
-            let read = comment_read(core, &params, &scope, origin)?;
+            let read = cancellable_read(core, &params, &scope, origin)?;
             provider(
                 comments
                     .song_comments_with_cancellation(request, read.token.clone())
@@ -1305,7 +1316,13 @@ async fn invoke_core(
                 page,
                 limit,
             } = parse(&params)?;
-            provider(core.qq_music().search(query, kind, page, limit).await)
+            let read = cancellable_read(core, &params, &default_qqmusic_profile(), origin)?;
+            let qqmusic = core.qq_music();
+            provider(tokio::select! {
+                biased;
+                _ = read.token.cancelled() => Err(ProviderCommandError::adapter("search cancelled")),
+                result = qqmusic.search(query, kind, page, limit) => result,
+            })
         }
         "qqmusic_song" => {
             let IdParams { id } = parse(&params)?;
@@ -1334,7 +1351,7 @@ async fn invoke_core(
         }
         "qqmusic_lyrics" => {
             let SongIdParams { song_id } = parse(&params)?;
-            let read = comment_read(core, &params, &default_qqmusic_profile(), origin)?;
+            let read = cancellable_read(core, &params, &default_qqmusic_profile(), origin)?;
             let lyrics = core.qq_music();
             provider(tokio::select! {
                 biased;

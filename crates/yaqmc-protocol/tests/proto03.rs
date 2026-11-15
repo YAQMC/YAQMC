@@ -20,6 +20,7 @@ fn registry_is_the_211_method_single_source_of_truth() {
         "qqmusic_artist_catalog",
         "provider_comments",
         "provider_comments_cancel",
+        "provider_search_cancel",
         "app_cache_stats",
         "app_clear_cache",
     ] {

@@ -192,6 +192,11 @@ const METHODS: &[MethodSpec] = &[
     spec("provider_area", MethodOwner::Core, OriginClass::Main),
     spec("provider_library", MethodOwner::Core, OriginClass::Main),
     spec("provider_search", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_search_cancel",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
     spec("provider_song", MethodOwner::Core, OriginClass::Main),
     spec("provider_album", MethodOwner::Core, OriginClass::Main),
     spec("provider_artist", MethodOwner::Core, OriginClass::Main),
