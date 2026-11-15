@@ -56,7 +56,10 @@ account acceptance remains pending.
 Search is category-tagged (`song`, `artist`, or `album`) and uses the pinned `qm-api-rs` typed boundary. Playlist
 discovery is supplied through the home/toplist and direct playlist lookup paths; playlist results are not part of the
 search contract. Artist pages request their full song and album sections through the pinned typed singer methods;
-the React and Electron layers do not construct upstream API routes.
+the React and Electron layers do not construct upstream API routes. Search snapshots the active profile's session
+for its CGI identity when one is available and falls back to the guest identity otherwise; its result cache remains
+public catalog data. A business-code rate limit is retried once after a bounded delay, while input cancellation
+stops the pending request.
 
 Requests use a five-second connect timeout and fifteen-second total timeout. Retryable transport/rate-limit cases
 are retried at most once. Partial DTOs use explicit defaults, but missing identity or impossible response structure

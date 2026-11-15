@@ -27,6 +27,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 pub mod account;
 mod artwork;
@@ -88,6 +89,7 @@ const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
+const SEARCH_RATE_LIMIT_RETRY_DELAY: Duration = Duration::from_millis(750);
 const GUEST_HOME_CACHE_KEY: &str = "qqmusic:home:v5:guest";
 const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v2";
 
@@ -964,9 +966,24 @@ impl QQMusicService {
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, QQMusicError> {
+        self.search_with_cancellation(query, kind, page, limit, CancellationToken::new())
+            .await
+    }
+
+    pub(crate) async fn search_with_cancellation(
+        &self,
+        query: String,
+        kind: CatalogSearchKind,
+        page: u32,
+        limit: u32,
+        cancellation: CancellationToken,
+    ) -> Result<SearchResult, QQMusicError> {
         let query = query.trim().to_owned();
         if query.is_empty() {
             return Ok(empty_search_result(query, kind));
+        }
+        if cancellation.is_cancelled() {
+            return Err(QQMusicError::Cancelled);
         }
         let page = page.max(1);
         let limit = limit.clamp(1, 30);
@@ -986,7 +1003,15 @@ impl QQMusicService {
         self.storage
             .record_search("qqmusic", &query)
             .map_err(|_| QQMusicError::Storage)?;
-        match self.client.search(&query, kind, page, limit).await {
+        let credential =
+            self.auth.current_session().await.and_then(|session| {
+                crate::qmapi::credential::credential_from_session(&session).ok()
+            });
+        match self
+            .client
+            .search_with_credential(&query, kind, page, limit, credential, cancellation)
+            .await
+        {
             Ok(result) => {
                 self.storage
                     .put_json(&key, "metadata", &result, METADATA_TTL_MS)
@@ -2074,6 +2099,7 @@ impl QQMusicClient {
         Ok(Self { http, catalog })
     }
 
+    #[cfg(test)]
     async fn search(
         &self,
         query: &str,
@@ -2081,74 +2107,147 @@ impl QQMusicClient {
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, QQMusicError> {
-        if kind == CatalogSearchKind::Playlist {
-            let response =
-                crate::qmapi::catalog::playlist_search(&self.catalog, query, page, limit).await?;
-            return Ok(SearchResult::Playlist {
-                query: query.to_owned(),
-                page,
-                has_more: search_has_more(response.total, page, limit),
-                items: response
-                    .items
-                    .into_iter()
-                    .filter_map(normalize_qm_playlist_preview)
-                    .collect(),
-            });
-        }
+        Self::search_with_catalog(
+            &self.catalog,
+            query,
+            kind,
+            page,
+            limit,
+            CancellationToken::new(),
+        )
+        .await
+    }
 
-        let search_type = match kind {
-            CatalogSearchKind::Song => qqmusic_api::SearchType::Song,
-            CatalogSearchKind::Artist => qqmusic_api::SearchType::Singer,
-            CatalogSearchKind::Album => qqmusic_api::SearchType::Album,
-            CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
-        };
-        let response = self
-            .catalog
-            .search
-            .search_by_type(
-                query,
-                search_type,
-                i64::from(limit),
-                i64::from(page),
-                &[],
-                None,
-                true,
-            )
-            .await
-            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
-        let has_more = search_has_more(response.total_num, page, limit);
-        match kind {
-            CatalogSearchKind::Song => Ok(SearchResult::Song {
-                query: query.to_owned(),
-                page,
-                has_more,
-                items: response
-                    .song
-                    .into_iter()
-                    .filter_map(|item| normalize_qm_song(item.base, 1))
-                    .collect(),
-            }),
-            CatalogSearchKind::Artist => Ok(SearchResult::Artist {
-                query: query.to_owned(),
-                page,
-                has_more,
-                items: response
-                    .singer
-                    .into_iter()
-                    .filter_map(normalize_qm_artist_preview)
-                    .collect(),
-            }),
-            CatalogSearchKind::Album => Ok(SearchResult::Album {
-                query: query.to_owned(),
-                page,
-                has_more,
-                items: response
-                    .album
-                    .into_iter()
-                    .filter_map(normalize_qm_album_preview)
-                    .collect(),
-            }),
-            CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
+    async fn search_with_credential(
+        &self,
+        query: &str,
+        kind: CatalogSearchKind,
+        page: u32,
+        limit: u32,
+        credential: Option<qqmusic_api::Credential>,
+        cancellation: CancellationToken,
+    ) -> Result<SearchResult, QQMusicError> {
+        let authenticated_catalog = credential
+            .map(|credential| {
+                crate::qmapi::qmapi_client_with(Some(credential), Some(qqmusic_api::Platform::Web))
+                    .map_err(crate::qmapi::cgi::map_qmapi_error)
+            })
+            .transpose()?;
+        Self::search_with_catalog(
+            authenticated_catalog.as_ref().unwrap_or(&self.catalog),
+            query,
+            kind,
+            page,
+            limit,
+            cancellation,
+        )
+        .await
+    }
+
+    async fn search_with_catalog(
+        catalog: &qqmusic_api::Client,
+        query: &str,
+        kind: CatalogSearchKind,
+        page: u32,
+        limit: u32,
+        cancellation: CancellationToken,
+    ) -> Result<SearchResult, QQMusicError> {
+        let mut rate_limit_retried = false;
+        loop {
+            let request = async {
+                if kind == CatalogSearchKind::Playlist {
+                    let response =
+                        crate::qmapi::catalog::playlist_search(catalog, query, page, limit).await?;
+                    return Ok(SearchResult::Playlist {
+                        query: query.to_owned(),
+                        page,
+                        has_more: search_has_more(response.total, page, limit),
+                        items: response
+                            .items
+                            .into_iter()
+                            .filter_map(normalize_qm_playlist_preview)
+                            .collect(),
+                    });
+                }
+
+                let search_type = match kind {
+                    CatalogSearchKind::Song => qqmusic_api::SearchType::Song,
+                    CatalogSearchKind::Artist => qqmusic_api::SearchType::Singer,
+                    CatalogSearchKind::Album => qqmusic_api::SearchType::Album,
+                    CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
+                };
+                let response = catalog
+                    .search
+                    .search_by_type(
+                        query,
+                        search_type,
+                        i64::from(limit),
+                        i64::from(page),
+                        &[],
+                        None,
+                        true,
+                    )
+                    .await
+                    .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+                let has_more = search_has_more(response.total_num, page, limit);
+                match kind {
+                    CatalogSearchKind::Song => Ok(SearchResult::Song {
+                        query: query.to_owned(),
+                        page,
+                        has_more,
+                        items: response
+                            .song
+                            .into_iter()
+                            .filter_map(|item| normalize_qm_song(item.base, 1))
+                            .collect(),
+                    }),
+                    CatalogSearchKind::Artist => Ok(SearchResult::Artist {
+                        query: query.to_owned(),
+                        page,
+                        has_more,
+                        items: response
+                            .singer
+                            .into_iter()
+                            .filter_map(normalize_qm_artist_preview)
+                            .collect(),
+                    }),
+                    CatalogSearchKind::Album => Ok(SearchResult::Album {
+                        query: query.to_owned(),
+                        page,
+                        has_more,
+                        items: response
+                            .album
+                            .into_iter()
+                            .filter_map(normalize_qm_album_preview)
+                            .collect(),
+                    }),
+                    CatalogSearchKind::Playlist => {
+                        unreachable!("playlist search returns above")
+                    }
+                }
+            };
+            let result = tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+                result = request => result,
+            };
+            match result {
+                Err(QQMusicError::RateLimited) if !rate_limit_retried => {
+                    rate_limit_retried = true;
+                    tracing::debug!(
+                        target: "qqmusic.search",
+                        kind = kind.as_str(),
+                        page,
+                        "QQ Music rate-limited search; retrying once after backoff"
+                    );
+                    tokio::select! {
+                        biased;
+                        _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+                        _ = tokio::time::sleep(SEARCH_RATE_LIMIT_RETRY_DELAY) => {}
+                    }
+                }
+                result => return result,
+            }
         }
     }
 
@@ -4559,7 +4658,7 @@ mod tests {
     use super::account::AccountState;
     use super::transport::{TransportRequest, TransportResponse};
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use yaqmc_core::{
         audio::{AudioEngine, RodioAudioEngine},
         credentials::{MemoryCredentialStore, PlatformCredentialStore},
@@ -4597,16 +4696,34 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
-    #[derive(Default)]
     struct TypedSearchTransport {
         requests: std::sync::Mutex<Vec<serde_json::Value>>,
+        headers: std::sync::Mutex<Vec<Vec<(String, String)>>>,
+        rate_limit_once: AtomicBool,
+        pending_search: AtomicBool,
     }
 
     impl TypedSearchTransport {
+        fn new() -> Self {
+            Self {
+                requests: std::sync::Mutex::new(Vec::new()),
+                headers: std::sync::Mutex::new(Vec::new()),
+                rate_limit_once: AtomicBool::new(false),
+                pending_search: AtomicBool::new(false),
+            }
+        }
+
         fn requests(&self) -> Vec<serde_json::Value> {
             self.requests
                 .lock()
                 .expect("typed search request lock")
+                .clone()
+        }
+
+        fn headers(&self) -> Vec<Vec<(String, String)>> {
+            self.headers
+                .lock()
+                .expect("typed search header lock")
                 .clone()
         }
     }
@@ -4680,6 +4797,10 @@ mod tests {
                 .lock()
                 .expect("typed search request lock")
                 .push(payload.clone());
+            self.headers
+                .lock()
+                .expect("typed search header lock")
+                .push(request.headers.clone());
             if payload.get("qimeiParams").is_some() {
                 return Ok(qqmusic_api::TransportResponse {
                     status: 200,
@@ -4697,7 +4818,18 @@ mod tests {
                 && method == "DoSearchForQQMusicMobile"
             {
                 assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
-                typed_search_response(search_type)
+                if self.pending_search.load(Ordering::Acquire) {
+                    std::future::pending::<()>().await;
+                }
+                if self.rate_limit_once.swap(false, Ordering::AcqRel) {
+                    serde_json::to_vec(&serde_json::json!({
+                        "code": 0,
+                        "req_0": { "code": 2001, "data": {} }
+                    }))
+                    .expect("rate limit response JSON")
+                } else {
+                    typed_search_response(search_type)
+                }
             } else if module == "music.getSession.session" && method == "GetSession" {
                 assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
                 include_bytes!("../tests/fixtures/qqmusic/catalog/artist-session.json").to_vec()
@@ -4713,6 +4845,13 @@ mod tests {
         }
     }
 
+    fn cookie_header(headers: &[(String, String)]) -> Option<&str> {
+        headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("cookie"))
+            .map(|(_, value)| value.as_str())
+    }
+
     #[async_trait::async_trait]
     impl QqTransport for RecordingAccountTransport {
         async fn execute(
@@ -4726,7 +4865,7 @@ mod tests {
 
     #[tokio::test]
     async fn typed_search_uses_pinned_transport_params_and_maps_each_kind() {
-        let transport = Arc::new(TypedSearchTransport::default());
+        let transport = Arc::new(TypedSearchTransport::new());
         let catalog = qqmusic_api::Client::new_with_transport(
             None,
             Some(qqmusic_api::Platform::Web),
@@ -4788,6 +4927,101 @@ mod tests {
             assert_eq!(param["selectors"], serde_json::json!({}));
             assert_eq!(param["vec_selectors"], serde_json::json!([]));
         }
+    }
+
+    #[tokio::test]
+    async fn authenticated_search_sends_session_cookie_and_retries_rate_limit_once() {
+        let transport = Arc::new(TypedSearchTransport::new());
+        transport.rate_limit_once.store(true, Ordering::Release);
+        let catalog = qqmusic_api::Client::new_with_transport(
+            Some(qqmusic_api::Credential {
+                musicid: 10001,
+                str_musicid: "10001".to_owned(),
+                musickey: "SYNTHETIC_SESSION_KEY".to_owned(),
+                ..Default::default()
+            }),
+            Some(qqmusic_api::Platform::Web),
+            transport.clone(),
+        );
+
+        let result = QQMusicClient::search_with_catalog(
+            &catalog,
+            "MIRA",
+            CatalogSearchKind::Song,
+            1,
+            8,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("search succeeds after one rate-limit retry");
+        assert!(matches!(result, SearchResult::Song { items, .. } if items.len() == 1));
+
+        let requests = transport.requests();
+        let headers = transport.headers();
+        let search_indices = requests
+            .iter()
+            .enumerate()
+            .filter_map(|(index, request)| {
+                (request["req_0"]["module"] == "music.search.SearchCgiService").then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            search_indices.len(),
+            2,
+            "one limited attempt plus one retry"
+        );
+        for index in search_indices {
+            let cookie =
+                cookie_header(&headers[index]).expect("authenticated search Cookie header");
+            assert!(cookie.contains("uin=10001"), "{cookie}");
+            assert!(
+                cookie.contains("qm_keyst=SYNTHETIC_SESSION_KEY"),
+                "{cookie}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn search_cancellation_interrupts_pending_network_work() {
+        let transport = Arc::new(TypedSearchTransport::new());
+        transport.pending_search.store(true, Ordering::Release);
+        let catalog = qqmusic_api::Client::new_with_transport(
+            None,
+            Some(qqmusic_api::Platform::Web),
+            transport.clone(),
+        );
+        let cancellation = CancellationToken::new();
+        let task = tokio::spawn({
+            let cancellation = cancellation.clone();
+            async move {
+                QQMusicClient::search_with_catalog(
+                    &catalog,
+                    "MIRA",
+                    CatalogSearchKind::Song,
+                    1,
+                    8,
+                    cancellation,
+                )
+                .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while transport
+                .requests()
+                .iter()
+                .all(|request| request["req_0"]["module"] != "music.search.SearchCgiService")
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("search request reaches transport");
+        cancellation.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("cancelled search terminates")
+            .expect("search task joins");
+        assert!(matches!(result, Err(QQMusicError::Cancelled)));
     }
 
     #[test]

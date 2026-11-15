@@ -30,6 +30,9 @@ typed 详情，以及通过 `singer.get_songs_list/get_album_list` 获取的歌�
 层不拼接上游 API 路由。其余公开能力包括访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、封面
 缓存；账号扩展包括 OAuth、资料、收藏、自建/收藏歌单、条件性最近播放、权益和播放 vkey。
 
+搜索在有当前 profile 会话时使用该会话快照作为 CGI 身份，否则回退访客身份；搜索结果缓存仍是公开目录
+数据。上游业务限流会等待一个有界延迟后重试一次，新的输入或页面离开会取消旧请求。
+
 QQ 和微信登录在受限制无痕 Electron `BrowserWindow` 打开 `graph.qq.com` 或 `open.weixin.qq.com`，只接受注册的
 `y.qq.com/portal/wx_redirect.html` 回调。Rust 校验 provider 类型、return URL、唯一 CSRF state 和 code，
 再交换会话。OAuth 窗口无账号命令权限、拒绝 popup，也不读取 cookie/password。手机号登录和浏览器
