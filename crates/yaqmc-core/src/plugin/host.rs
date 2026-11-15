@@ -27,6 +27,7 @@ use crate::plugin::{
 };
 use yaqmc_provider_api::{ProviderCapabilitySummary, ProviderRegistry};
 
+mod activation;
 mod playlists;
 mod updates;
 
@@ -183,6 +184,9 @@ struct PluginStateFile {
     #[serde(default)]
     generation: u64,
     enabled: bool,
+    /// User intent stays in `enabled`; an interrupted activation suspends execution only.
+    #[serde(default)]
+    activation_suspended: bool,
     status: PluginStatus,
     status_reason: Option<String>,
     granted_permissions: Vec<String>,
@@ -207,9 +211,21 @@ struct HostFile {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JournalFile {
+    #[serde(default)]
+    activation_recovery_version: u32,
     boot_id: String,
     activation_started: bool,
     clean_exit: bool,
+    #[serde(default)]
+    pending_activations: BTreeMap<String, activation::PendingActivation>,
+    #[serde(default)]
+    activation_failures: BTreeMap<String, activation::ActivationFailures>,
+}
+
+impl PluginStateFile {
+    fn effective_enabled(&self) -> bool {
+        self.enabled && !self.activation_suspended
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -278,19 +294,17 @@ impl ExtensionHost {
         fs::create_dir_all(&root)
             .map_err(|_| HostError::from("plugin storage could not be created"))?;
         let recovered_update = updates::recover(&root)?;
-        let mut host: HostFile = read_json(&root.join("host.json")).unwrap_or_default();
+        let host: HostFile = read_json(&root.join("host.json")).unwrap_or_default();
         let previous: JournalFile = read_json(&root.join("journal.json")).unwrap_or_default();
-        let crashed = previous.activation_started && !previous.clean_exit && !recovered_update;
-        if crashed {
-            host.safe_mode = true;
-        }
         let mut journal = JournalFile {
+            activation_recovery_version: 1,
             boot_id: format!("{:x}", now_ms()),
             activation_started: false,
             clean_exit: false,
+            pending_activations: BTreeMap::new(),
+            activation_failures: BTreeMap::new(),
         };
         write_json(&root.join("host.json"), &host)?;
-        write_json(&root.join("journal.json"), &journal)?;
         let mut records = BTreeMap::new();
         if let Ok(entries) = fs::read_dir(&root) {
             for entry in entries.flatten() {
@@ -342,21 +356,14 @@ impl ExtensionHost {
                 records.insert(state.id.clone(), (state, manifest, version_dir));
             }
         }
-        if crashed {
-            for (state, manifest, dir) in records.values_mut() {
-                if state.enabled {
-                    state.enabled = false;
-                    state.status = PluginStatus::Failed;
-                    state.status_reason =
-                        Some("disabled after an unclean shutdown during plugin activation".into());
-                    let _ = persist_state(&root, state, manifest, dir.clone());
-                }
-            }
-        }
-        if records.values().any(|(state, _, _)| state.enabled) {
-            journal.activation_started = true;
-            write_json(&root.join("journal.json"), &journal)?;
-        }
+        activation::recover(
+            &root,
+            previous,
+            &mut journal,
+            &mut records,
+            recovered_update,
+        )?;
+        write_json(&root.join("journal.json"), &journal)?;
         let mut storage = HashMap::new();
         let mut settings = HashMap::new();
         if let Ok(entries) = fs::read_dir(&root) {
@@ -552,7 +559,9 @@ impl ExtensionHost {
                 inner
                     .records
                     .iter()
-                    .filter(|(_, (state, manifest, _))| state.enabled && manifest.api_version == 3)
+                    .filter(|(_, (state, manifest, _))| {
+                        state.effective_enabled() && manifest.api_version == 3
+                    })
                     .map(|(id, _)| id.clone())
                     .collect::<Vec<_>>()
             }
@@ -603,6 +612,15 @@ impl ExtensionHost {
     }
 
     fn activate_provider_plugin(&self, id: &str) -> Result<(), HostError> {
+        let attempt = self.begin_component_activation(id)?;
+        let result = self.activate_provider_plugin_inner(id);
+        if let Some(attempt) = attempt {
+            self.finish_component_activation(&attempt)?;
+        }
+        result
+    }
+
+    fn activate_provider_plugin_inner(&self, id: &str) -> Result<(), HostError> {
         let (manifest, dir, granted, enabled, session_epochs, session_secret_fields) = {
             let inner = self
                 .inner
@@ -615,7 +633,7 @@ impl ExtensionHost {
                 manifest.clone(),
                 dir.clone(),
                 state.granted_permissions.clone(),
-                state.enabled && !inner.host.safe_mode,
+                state.effective_enabled() && !inner.host.safe_mode,
                 state.session_epochs.clone(),
                 state.session_secret_fields.clone(),
             )
@@ -1022,7 +1040,11 @@ impl ExtensionHost {
     pub fn mark_clean_exit(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.journal.clean_exit = true;
-            let _ = write_json(&self.root.join("journal.json"), &inner.journal);
+            inner.journal.pending_activations.clear();
+            inner.journal.activation_failures.clear();
+            if let Err(error) = write_json(&self.root.join("journal.json"), &inner.journal) {
+                tracing::warn!(target: "plugin.runtime", error = %error, "could not persist clean plugin shutdown");
+            }
         }
     }
 
@@ -1110,6 +1132,10 @@ impl ExtensionHost {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         inner.host.safe_mode = enabled;
         write_json(&self.root.join("host.json"), &inner.host)?;
+        if enabled {
+            inner.journal.pending_activations.clear();
+            write_json(&self.root.join("journal.json"), &inner.journal)?;
+        }
         drop(inner);
         self.reconcile_provider_plugins();
         Ok(())
@@ -1324,6 +1350,7 @@ impl ExtensionHost {
                 retained_session_namespaces: Vec::new(),
                 generation: 0,
                 enabled: false,
+                activation_suspended: false,
                 status: PluginStatus::Incompatible,
                 status_reason: Some(reason.clone()),
                 granted_permissions: Vec::new(),
@@ -1384,6 +1411,7 @@ impl ExtensionHost {
             retained_session_namespaces: Vec::new(),
             generation: 0,
             enabled: enable && !inner.host.safe_mode,
+            activation_suspended: false,
             status: if enable && !inner.host.safe_mode {
                 PluginStatus::Active
             } else {
@@ -1404,10 +1432,6 @@ impl ExtensionHost {
             &inspection.manifest,
             version_dir.clone(),
         )?;
-        if enable {
-            inner.journal.activation_started = true;
-            write_json(&self.root.join("journal.json"), &inner.journal)?;
-        }
         if !inner.host.style_order.contains(&state.id) {
             inner.host.style_order.push(state.id.clone());
             write_json(&self.root.join("host.json"), &inner.host)?;
@@ -1490,8 +1514,6 @@ impl ExtensionHost {
                     granted.push(key);
                 }
             }
-            inner.journal.activation_started = true;
-            write_json(&self.root.join("journal.json"), &inner.journal)?;
         } else {
             inner.runtimes.retain(|_, runtime| runtime.plugin_id != id);
         }
@@ -1502,6 +1524,7 @@ impl ExtensionHost {
         state.granted_permissions = granted;
         state.generation = state.generation.saturating_add(1);
         state.enabled = enabled;
+        state.activation_suspended = false;
         state.status = if enabled {
             PluginStatus::Active
         } else {
@@ -1510,6 +1533,7 @@ impl ExtensionHost {
         state.status_reason = None;
         persist_state(&self.root, state, stored_manifest, dir.clone())?;
         let record = to_record(state, stored_manifest, safe_mode);
+        activation::cancel_locked(&self.root, &mut inner, id)?;
         drop(inner);
         self.finish_provider_transition(record)
     }
@@ -1657,7 +1681,8 @@ impl ExtensionHost {
             let Some((state, manifest, dir)) = inner.records.get(id) else {
                 continue;
             };
-            if !state.enabled && self.update_phase(id).as_deref() != Some("validating") {
+            if !state.effective_enabled() && self.update_phase(id).as_deref() != Some("validating")
+            {
                 continue;
             }
             if !package_matches_state(state, manifest, dir) {
@@ -1677,14 +1702,15 @@ impl ExtensionHost {
         let mut scripts = Vec::new();
         let mut song_badges = Vec::new();
         for (id, (state, manifest, dir)) in &inner.records {
-            if !state.enabled && self.update_phase(id).as_deref() != Some("validating") {
+            if !state.effective_enabled() && self.update_phase(id).as_deref() != Some("validating")
+            {
                 continue;
             }
             if !package_matches_state(state, manifest, dir) {
                 continue;
             }
             // Declarative badges work without a JavaScript worker, including on Android.
-            if state.enabled
+            if state.effective_enabled()
                 && state
                     .granted_permissions
                     .iter()
@@ -1814,6 +1840,7 @@ impl ExtensionHost {
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        activation::cancel_locked(&self.root, &mut inner, id)?;
         inner.records.remove(id);
         inner.host.style_order.retain(|candidate| candidate != id);
         inner.runtimes.retain(|_, runtime| runtime.plugin_id != id);
@@ -1884,16 +1911,16 @@ impl ExtensionHost {
             .records
             .get(plugin_id)
             .ok_or_else(|| HostError::from("the plugin is not installed"))?;
-        if !state.enabled && phase.as_deref() != Some("validating") {
+        if !state.effective_enabled() && phase.as_deref() != Some("validating") {
             return Err(HostError::from("the plugin is disabled"));
         }
         if !package_matches_state(state, manifest, dir) {
             return Err(HostError::from("plugin package integrity check failed"));
         }
         let token = format!(
-            "rt-{}-{}",
+            "rt-{}-{:032x}",
             self.runtime_seq.fetch_add(1, Ordering::AcqRel),
-            now_ms()
+            rand::random::<u128>()
         );
         let mut permissions = HashSet::new();
         let mut network_origins = HashSet::new();
@@ -1912,6 +1939,9 @@ impl ExtensionHost {
             granted: state.granted_permissions.clone(),
             network_origins,
         };
+        if manifest.entrypoints.script.is_some() && phase.is_none() {
+            activation::start_locked(&self.root, &mut inner, plugin_id, &token)?;
+        }
         inner.runtimes.insert(token, runtime.clone());
         Ok(runtime)
     }
@@ -1919,6 +1949,11 @@ impl ExtensionHost {
     pub fn stop_runtime(&self, token: &str) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.runtimes.remove(token);
+            if inner.journal.pending_activations.remove(token).is_some() {
+                if let Err(error) = write_json(&self.root.join("journal.json"), &inner.journal) {
+                    tracing::warn!(target: "plugin.runtime", error = %error, "could not persist plugin activation cancellation");
+                }
+            }
         }
     }
 
@@ -2092,7 +2127,7 @@ impl ExtensionHost {
         let enabled = inner
             .records
             .get(plugin_id)
-            .is_some_and(|(state, _, _)| state.enabled);
+            .is_some_and(|(state, _, _)| state.effective_enabled());
         drop(inner);
         if enabled {
             self.deactivate_provider_plugin(plugin_id)?;
@@ -2120,7 +2155,7 @@ impl ExtensionHost {
             .records
             .get(plugin_id)
             .ok_or_else(|| HostError::from("the plugin is not installed"))?;
-        if !state.enabled {
+        if !state.effective_enabled() {
             return Err(HostError::from("the plugin is disabled"));
         }
         let path = dir.join(relative);
@@ -2256,7 +2291,7 @@ fn missing_dependency(
 }
 
 fn to_record(state: &PluginStateFile, manifest: &PluginManifest, safe_mode: bool) -> PluginRecord {
-    let enabled = state.enabled && !safe_mode;
+    let enabled = state.effective_enabled() && !safe_mode;
     PluginRecord {
         repository: manifest
             .repository
@@ -2989,7 +3024,7 @@ mod tests {
     }
 
     #[test]
-    fn unclean_shutdown_marks_enabled_plugins_failed() {
+    fn legacy_unclean_shutdown_does_not_disable_enabled_plugins() {
         let root = tempfile::tempdir().expect("root");
         let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
         host.install_inspection(style_inspection("dev.example.one"), true, &[], "test")
@@ -3002,9 +3037,9 @@ mod tests {
         )
         .expect("journal");
         let recovered = ExtensionHost::open(root.path().to_path_buf()).expect("reopen");
-        assert!(recovered.safe_mode());
-        assert_eq!(recovered.list()[0].status, PluginStatus::Failed);
-        assert!(!recovered.list()[0].enabled);
+        assert!(!recovered.safe_mode());
+        assert_eq!(recovered.list()[0].status, PluginStatus::Active);
+        assert!(recovered.list()[0].enabled);
     }
 
     #[test]

@@ -236,8 +236,8 @@ fn plugin_host_persists_safety_and_enforces_runtime_and_package_contracts() {
     )
     .expect("unclean journal writes");
     let recovered = ExtensionHost::open(root.path().join("host")).expect("host reopens");
-    assert!(recovered.safe_mode());
-    assert!(!recovered.list()[0].enabled);
+    assert!(!recovered.safe_mode());
+    assert!(recovered.list()[0].enabled);
 
     let traversal = root.path().join("traversal.yaqmc-plugin");
     write_zip(

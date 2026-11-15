@@ -97,7 +97,7 @@ describe('PluginManager', () => {
     );
     expect(
       screen.getByText(
-        'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
+        'Safe Mode is on. Plugins are paused; leaving it restores their saved enable preferences.',
       ),
     ).toBeInTheDocument();
     expect(setPluginSafeMode).toHaveBeenCalledWith(true);
@@ -110,7 +110,7 @@ describe('PluginManager', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
+          'Safe Mode is on. Plugins are paused; leaving it restores their saved enable preferences.',
         ),
       ).toBeInTheDocument();
     });
@@ -176,6 +176,27 @@ describe('PluginManager', () => {
     platforms: ['win32'],
     unpackedPath: '/test/provider',
   };
+
+  it('explains interrupted activation and lets the user retry the suspended plugin', async () => {
+    const plugin: PluginRecord = {
+      ...providerPlugin,
+      permissions: ['provider.catalog'],
+      status: 'failed',
+      statusReason: 'plugin-activation-interrupted',
+    };
+    vi.mocked(listPlugins).mockResolvedValue([plugin]);
+    vi.mocked(setPluginEnabled).mockResolvedValue({ ...plugin, enabled: true, status: 'active' });
+    render(<PluginManager />);
+    expect(
+      await screen.findByText(
+        'This plugin did not finish activation on three consecutive attempts and has been suspended. Other plugins remain available. Enable it to retry.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    await waitFor(() =>
+      expect(setPluginEnabled).toHaveBeenCalledWith(plugin.id, true, plugin.grantedPermissions),
+    );
+  });
 
   it('reviews a fixed same-version package and requires confirmation for every new permission', async () => {
     vi.mocked(choosePluginFile).mockResolvedValue('/test/provider.yaqmc-plugin');

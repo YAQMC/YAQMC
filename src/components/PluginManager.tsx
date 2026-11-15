@@ -87,10 +87,12 @@ function matchesStatus(plugin: PluginRecord, filter: StatusFilter): boolean {
 }
 
 /** Why a plugin is not running, in words; never just a coloured dot. */
-function statusReason(plugin: PluginRecord): string | null {
-  if (plugin.status === 'failed') return plugin.lastError ?? plugin.statusReason ?? null;
-  if (plugin.status === 'incompatible' || plugin.statusReason) return plugin.statusReason ?? null;
-  return null;
+function statusReason(plugin: PluginRecord, interruptedLabel: string): string | null {
+  const reason =
+    plugin.status === 'failed'
+      ? (plugin.lastError ?? plugin.statusReason ?? null)
+      : (plugin.statusReason ?? null);
+  return reason === 'plugin-activation-interrupted' ? interruptedLabel : reason;
 }
 
 interface PluginManagerProps {
@@ -445,7 +447,7 @@ export function PluginManager({ focusPluginId = null, onFocusHandled }: PluginMa
         <ul className="plugin-grid">
           {visible.map((plugin) => {
             const chips = capabilityChips(plugin);
-            const reason = statusReason(plugin);
+            const reason = statusReason(plugin, t('activationInterrupted'));
             return (
               <li key={plugin.id} className="plugin-card" data-status={plugin.status}>
                 <div className="plugin-card__head">
@@ -631,10 +633,10 @@ export function PluginManager({ focusPluginId = null, onFocusHandled }: PluginMa
               </div>
             </header>
             {details.description && <p>{details.description}</p>}
-            {statusReason(details) && (
+            {statusReason(details, t('activationInterrupted')) && (
               <p className="plugin-card__reason" role="status">
                 {details.status === 'failed' ? `${t('failed')}: ` : ''}
-                {statusReason(details)}
+                {statusReason(details, t('activationInterrupted'))}
               </p>
             )}
             <dl className="plugin-details__facts">

@@ -1,4 +1,4 @@
-//! PLUG-02: host-proxied network allow/deny + safe-mode crash-loop drill.
+//! PLUG-02: host-proxied network allow/deny + per-plugin activation recovery drill.
 //!
 //! Uses `plugin/network.rs` (HTTPS-only, private/local IP block) and a temp
 //! `ExtensionHost`. The hostile probe is copied into an isolated temp dir and
@@ -190,7 +190,7 @@ async fn granted_script_network_runtime_proxies_example_origin_only() {
 }
 
 #[test]
-fn crash_loop_journal_enters_safe_mode_and_disables_hostile_fixture() {
+fn interrupted_activation_suspends_only_hostile_fixture_and_allows_retry() {
     let source = hostile_fixture();
     assert!(
         source.join("manifest.json").is_file(),
@@ -213,20 +213,35 @@ fn crash_loop_journal_enters_safe_mode_and_disables_hostile_fixture() {
         assert_eq!(installed.id, HOSTILE_ID);
         assert!(installed.enabled);
         assert_eq!(installed.status, PluginStatus::Active);
+        host.install_unpacked(&example("style-sakura"), true, &[])
+            .expect("healthy style installs");
         assert_eq!(host.active_resources().scripts.len(), 1);
         assert!(!host.safe_mode());
-        // Unclean drop: activation started, no mark_clean_exit().
     }
 
-    let recovered = ExtensionHost::open(host_path).expect("host reopens after crash");
-    assert!(
-        recovered.safe_mode(),
-        "unclean activation must enter safe mode"
-    );
-    assert!(recovered.active_resources().safe_mode);
+    // The old process-lifetime marker is not evidence of a plugin startup crash.
+    std::fs::write(
+        host_path.join("journal.json"),
+        br#"{"bootId":"legacy","activationStarted":true,"cleanExit":false}"#,
+    )
+    .expect("legacy journal");
+    for _ in 0..CRASH_LOOP_FAILURES {
+        let host = ExtensionHost::open(host_path.clone()).expect("host reopens");
+        assert!(!host.safe_mode());
+        assert!(host.list().iter().any(|p| p.id == HOSTILE_ID && p.enabled));
+        host.start_runtime(HOSTILE_ID).expect("activation begins");
+        // Simulate process termination before the Worker reports ready.
+    }
+
+    let recovered = ExtensionHost::open(host_path.clone()).expect("host reopens after crashes");
+    assert!(!recovered.safe_mode());
+    assert!(!recovered.active_resources().safe_mode);
     assert!(recovered.active_resources().scripts.is_empty());
-    assert!(recovered.active_resources().styles.is_empty());
-    assert!(recovered.active_resources().scenes.is_empty());
+    assert_eq!(recovered.active_resources().styles.len(), 1);
+    assert!(recovered
+        .list()
+        .iter()
+        .any(|p| p.id == SAKURA_ID && p.enabled));
     let record = recovered
         .list()
         .into_iter()
@@ -234,10 +249,32 @@ fn crash_loop_journal_enters_safe_mode_and_disables_hostile_fixture() {
         .expect("hostile fixture still packaged");
     assert!(!record.enabled);
     assert_eq!(record.status, PluginStatus::Failed);
+    assert_eq!(
+        record.status_reason.as_deref(),
+        Some("plugin-activation-interrupted")
+    );
     let denied = recovered
         .start_runtime(HOSTILE_ID)
-        .expect_err("safe mode blocks scripts");
-    assert!(denied.to_string().contains("safe mode"), "{denied}");
+        .expect_err("suspended plugin cannot restart automatically");
+    assert!(denied.to_string().contains("disabled"), "{denied}");
+    recovered
+        .set_enabled(HOSTILE_ID, true)
+        .expect("explicit retry");
+    let retry = recovered.start_runtime(HOSTILE_ID).expect("retry begins");
+    recovered
+        .runtime_ready(&retry.token)
+        .expect("retry completes");
+    drop(recovered);
+    let recovered =
+        ExtensionHost::open(host_path).expect("completed activation survives process exit");
+    assert!(recovered
+        .list()
+        .iter()
+        .any(|p| p.id == HOSTILE_ID && p.enabled));
+    assert!(recovered
+        .list()
+        .iter()
+        .any(|p| p.id == SAKURA_ID && p.enabled));
 }
 
 #[test]

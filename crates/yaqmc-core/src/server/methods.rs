@@ -207,6 +207,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_active_resources",
     "plugin_diagnostics",
     "plugin_runtime_start",
+    "plugin_runtime_ready",
     "plugin_runtime_stop",
     "plugin_mark_failed",
     "plugin_bridge",
@@ -1972,6 +1973,14 @@ async fn invoke_core(
             cmd(ops::plugin_runtime_start(&core.plugins(), &plugin_id))
         }
         #[cfg(feature = "plugins")]
+        "plugin_runtime_ready" => {
+            let TokenParams { token } = parse(&params)?;
+            cmd(core
+                .plugins()
+                .runtime_ready(&token)
+                .map_err(|error| error.to_string()))
+        }
+        #[cfg(feature = "plugins")]
         "plugin_runtime_stop" => {
             let TokenParams { token } = parse(&params)?;
             ops::plugin_runtime_stop(&core.plugins(), &token);
@@ -2211,6 +2220,7 @@ async fn invoke_core(
         | "plugin_active_resources"
         | "plugin_diagnostics"
         | "plugin_runtime_start"
+        | "plugin_runtime_ready"
         | "plugin_runtime_stop"
         | "plugin_mark_failed"
         | "plugin_bridge"

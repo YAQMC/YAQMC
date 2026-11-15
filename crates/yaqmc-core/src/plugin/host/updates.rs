@@ -1418,6 +1418,7 @@ impl ExtensionHost {
                 .as_ref()
                 .map_or(1, |s| s.generation.saturating_add(1)),
             enabled: preview.enabled,
+            activation_suspended: false,
             status: if preview.enabled {
                 PluginStatus::Active
             } else {
@@ -1581,11 +1582,6 @@ impl ExtensionHost {
         }
         {
             let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
-            if preview.enabled && !inner.host.safe_mode {
-                inner.journal.activation_started = true;
-                write_json(&self.root.join("journal.json"), &inner.journal)
-                    .map_err(|e| e.to_string())?;
-            }
             inner.records.insert(
                 id.clone(),
                 (candidate, prepared.manifest.clone(), destination),

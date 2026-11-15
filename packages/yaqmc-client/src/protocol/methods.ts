@@ -276,6 +276,7 @@ export const MIGRATED_METHOD_NAMES = [
   'plugin_active_resources',
   'plugin_diagnostics',
   'plugin_runtime_start',
+  'plugin_runtime_ready',
   'plugin_runtime_stop',
   'plugin_mark_failed',
   'plugin_bridge',
@@ -624,6 +625,7 @@ export type MethodParams = Exhaustive<{
   plugin_active_resources: void;
   plugin_diagnostics: void;
   plugin_runtime_start: { pluginId: string };
+  plugin_runtime_ready: { token: string };
   plugin_runtime_stop: { token: string };
   plugin_mark_failed: { id: string; reason: string };
   plugin_bridge: NamedRequest<PluginBridgeRequest>;
@@ -859,6 +861,7 @@ export type MethodResult = Exhaustive<{
   plugin_active_resources: ActivePluginResources;
   plugin_diagnostics: PluginDiagnostic[];
   plugin_runtime_start: string;
+  plugin_runtime_ready: null;
   plugin_runtime_stop: void;
   plugin_mark_failed: PluginRecord;
   plugin_bridge: unknown;

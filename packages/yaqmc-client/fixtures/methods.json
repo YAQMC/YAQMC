@@ -2316,6 +2316,19 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "plugin_runtime_ready",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "plugin_runtime_stop",
     "owner": "core",
     "requestCap": 1048576,

@@ -688,6 +688,7 @@ const METHODS: &[MethodSpec] = &[
     ),
     spec("plugin_diagnostics", MethodOwner::Core, OriginClass::Main),
     spec("plugin_runtime_start", MethodOwner::Core, OriginClass::Main),
+    spec("plugin_runtime_ready", MethodOwner::Core, OriginClass::Main),
     spec("plugin_runtime_stop", MethodOwner::Core, OriginClass::Main),
     spec("plugin_mark_failed", MethodOwner::Core, OriginClass::Main),
     spec("plugin_bridge", MethodOwner::Core, OriginClass::Main),

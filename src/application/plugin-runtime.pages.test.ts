@@ -152,6 +152,20 @@ describe('plugin runtime native and UI bridges', () => {
     );
   });
 
+  it('acknowledges activation only with the runtime bound by the host', async () => {
+    const { owner, unmount } = await start();
+    owner.onmessage?.({
+      data: { type: 'yaqmc/ready', token: 'forged-other-runtime' },
+    } as MessageEvent);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('plugin_runtime_ready', { token: 'token:0' }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith('plugin_runtime_ready', {
+      token: 'forged-other-runtime',
+    });
+    unmount();
+  });
+
   it('releases native handles immediately on a worker activation failure', async () => {
     const { owner, unmount } = await start();
     owner.onmessage?.({

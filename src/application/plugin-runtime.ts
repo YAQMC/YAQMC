@@ -973,6 +973,16 @@ async function startScripts(
         resolveReady = resolve;
       });
       workerReadiness.set(script.pluginId, { promise, resolve: resolveReady });
+      const failRuntime = (message: string) => {
+        if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
+        resolveReady(message);
+        logger.error('plugin.runtime.error', message, { pluginId: script.pluginId });
+        if (!updatingPlugins.has(script.pluginId))
+          void client
+            .invoke('plugin_mark_failed', { id: script.pluginId, reason: message })
+            .catch(() => undefined);
+        void retireOnePlugin(script.pluginId);
+      };
       worker.onmessage = (event: MessageEvent) => {
         if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
         const data = event.data as {
@@ -983,22 +993,19 @@ async function startScripts(
           message?: string;
         };
         if (data.type === 'yaqmc/ready') {
-          resolveReady(null);
+          const token = runtimeTokens.get(script.pluginId);
+          if (!token) return;
+          void client
+            .invoke('plugin_runtime_ready', { token })
+            .then(() => {
+              if (generation === runtimeGeneration && workers.get(script.pluginId) === worker)
+                resolveReady(null);
+            })
+            .catch((error) => failRuntime(error instanceof Error ? error.message : String(error)));
           return;
         }
         if (data.type === 'yaqmc/error') {
-          resolveReady(data.message ?? 'plugin runtime error');
-          logger.error('plugin.runtime.error', data.message ?? 'plugin runtime error', {
-            pluginId: script.pluginId,
-          });
-          if (!updatingPlugins.has(script.pluginId))
-            void client
-              .invoke('plugin_mark_failed', {
-                id: script.pluginId,
-                reason: data.message ?? 'plugin runtime error',
-              })
-              .catch(() => undefined);
-          void retireOnePlugin(script.pluginId);
+          failRuntime(data.message ?? 'plugin runtime error');
           return;
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
@@ -1052,17 +1059,7 @@ async function startScripts(
           });
       };
       worker.onerror = (event) => {
-        if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
-        logger.error('plugin.runtime.error', event.message, { pluginId: script.pluginId });
-        resolveReady(event.message || 'plugin runtime error');
-        if (!updatingPlugins.has(script.pluginId))
-          void client
-            .invoke('plugin_mark_failed', {
-              id: script.pluginId,
-              reason: event.message || 'plugin runtime error',
-            })
-            .catch(() => undefined);
-        void retireOnePlugin(script.pluginId);
+        failRuntime(event.message || 'plugin runtime error');
       };
       workers.set(script.pluginId, worker);
       workerFingerprints.set(script.pluginId, fingerprint);

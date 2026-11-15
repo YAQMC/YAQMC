@@ -1140,11 +1140,13 @@ export const enUS = {
       deniedList: 'QQ credentials, local files, shell, raw fetch, wildcard network',
       safeMode: 'Safe Mode',
       safeModeDescription:
-        'Disables third-party styles, scenes, scripts, and providers without deleting packages.',
+        'Pause third-party plugins while keeping installed packages, settings and enable preferences.',
+      activationInterrupted:
+        'This plugin did not finish activation on three consecutive attempts and has been suspended. Other plugins remain available. Enable it to retry.',
       enterSafeMode: 'Enter Safe Mode',
       leaveSafeMode: 'Leave Safe Mode',
       safeModeActive:
-        'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
+        'Safe Mode is on. Plugins are paused; leaving it restores their saved enable preferences.',
       typescriptRequiresBuild:
         'TypeScript plugins must be built to dist/main.js with the Plugin SDK.',
       uninstallConfirm: 'Uninstall {{name}}?',

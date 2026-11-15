@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_211_method_single_source_of_truth() {
+fn registry_is_the_213_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 185 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 187 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -220,6 +220,10 @@ fn account_and_plugin_methods_are_main_window_only() {
     let plugin = method("plugin_install").expect("plugin");
     assert_eq!(plugin.owner, MethodOwner::Core);
     assert!(plugin.main_window_only);
+    for origin in [WindowOrigin::LyricsDesktop, WindowOrigin::LyricsIsland] {
+        assert!(authorize(origin, "plugin_runtime_ready").is_err());
+    }
+    assert!(authorize(WindowOrigin::Main, "plugin_runtime_ready").is_ok());
 
     let surface = method("player_toggle").expect("toggle");
     assert!(!surface.main_window_only);
