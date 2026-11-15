@@ -157,6 +157,33 @@ describe('SearchPage', () => {
     expect(provider.search).toHaveBeenCalledTimes(1);
   });
 
+  it('debounces desktop typing and only searches for the settled query', async () => {
+    const provider = new FakeMusicProvider();
+    vi.spyOn(provider, 'search').mockImplementation(async (query) => resultFor(query));
+    render(
+      <ProviderContext.Provider value={provider}>
+        <SearchPage feed={homeFeed} onNavigate={() => undefined} />
+      </ProviderContext.Provider>,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Search music' });
+    fireEvent.change(input, { target: { value: '周' } });
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 120)));
+    expect(provider.search).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: '周杰伦' } });
+    await waitFor(() =>
+      expect(provider.search).toHaveBeenCalledWith(
+        '周杰伦',
+        'song',
+        expect.any(AbortSignal),
+        1,
+        20,
+      ),
+    );
+    expect(provider.search).toHaveBeenCalledTimes(1);
+  });
+
   it('replaces the live query when navigation supplies a different search route', async () => {
     const provider = new FakeMusicProvider();
     vi.spyOn(provider, 'search').mockImplementation(async (query) => resultFor(query));

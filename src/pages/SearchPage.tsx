@@ -5,7 +5,6 @@ import { usePlayerStore } from '../application/player-store';
 import { useMusicProvider } from '../application/provider-context';
 import type { AppRoute } from '../application/navigation';
 import { useCatalogSearch } from '../application/use-catalog-search';
-import { isAndroidRuntime } from '../application/host-capabilities';
 import { EntityLink } from '../components/EntityLink';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
@@ -27,14 +26,13 @@ interface SearchPageProps {
 }
 
 const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album', 'playlist'];
-const ANDROID_SEARCH_DEBOUNCE_MS = 280;
+const SEARCH_DEBOUNCE_MS = 280;
 
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
   const { t: errors } = useTranslation('errors');
   const provider = useMusicProvider();
   const playTracks = usePlayerStore((state) => state.playTracks);
-  const androidRuntime = isAndroidRuntime();
   const [inputValue, setInputValue] = useState(initialQuery);
   const [requestQuery, setRequestQuery] = useState(initialQuery.trim());
   const [isComposing, setIsComposing] = useState(false);
@@ -43,7 +41,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   const normalizedInput = inputValue.trim();
   const search = useCatalogSearch({
     provider,
-    query: androidRuntime ? requestQuery : normalizedInput,
+    query: requestQuery,
   });
   const category = search.categories[search.activeKind];
   const loadMore = search.loadMore;
@@ -60,14 +58,13 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   useEffect(() => inputRef.current?.focus(), []);
 
   useEffect(() => {
-    if (!androidRuntime) return;
     if (isComposing) return;
     const timer = window.setTimeout(
       () => setRequestQuery(normalizedInput),
-      normalizedInput ? ANDROID_SEARCH_DEBOUNCE_MS : 0,
+      normalizedInput ? SEARCH_DEBOUNCE_MS : 0,
     );
     return () => window.clearTimeout(timer);
-  }, [androidRuntime, isComposing, normalizedInput]);
+  }, [isComposing, normalizedInput]);
 
   useEffect(() => {
     const target = loadMoreTargetRef.current;

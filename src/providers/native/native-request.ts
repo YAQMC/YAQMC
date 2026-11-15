@@ -11,6 +11,13 @@ interface NativeProviderError {
 }
 
 const providerErrorCodes = new Set<ProviderErrorCode>(PROVIDER_ERROR_CODES);
+const cancellableRequestCommand: Partial<Record<MethodName, string>> = {
+  provider_comments: 'provider_comments_cancel',
+  provider_lyrics: 'provider_comments_cancel',
+  qqmusic_lyrics: 'provider_comments_cancel',
+  provider_search: 'provider_search_cancel',
+  qqmusic_search: 'provider_search_cancel',
+};
 
 function abortError(): DOMException {
   return new DOMException('The provider request was cancelled.', 'AbortError');
@@ -55,23 +62,22 @@ export async function nativeProviderRequest<T>(
   throwIfAborted(signal);
   try {
     const client = getYaqmcClient();
-    if (
-      ['provider_comments', 'provider_lyrics', 'qqmusic_lyrics'].includes(command) &&
-      signal &&
-      args
-    ) {
+    const cancelCommand = cancellableRequestCommand[command];
+    if (cancelCommand && signal && args) {
       const requestId = crypto.randomUUID();
       let onAbort!: () => void;
       const cancelled = new Promise<never>((_resolve, reject) => {
         onAbort = () => {
           reject(abortError());
-          void client
-            .invoke('provider_comments_cancel', {
-              providerId: (args.providerId as string | undefined) ?? 'qqmusic',
-              profileId: args.profileId as string | undefined,
-              requestId,
-            })
-            .catch(() => undefined);
+          const invoke = client.invoke as (
+            method: string,
+            args: Record<string, unknown>,
+          ) => Promise<unknown>;
+          void invoke(cancelCommand, {
+            providerId: (args.providerId as string | undefined) ?? 'qqmusic',
+            profileId: args.profileId as string | undefined,
+            requestId,
+          }).catch(() => undefined);
         };
         signal.addEventListener('abort', onAbort, { once: true });
       });

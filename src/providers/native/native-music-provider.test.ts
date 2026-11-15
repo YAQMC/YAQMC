@@ -57,6 +57,40 @@ describe('NativeMusicProvider', () => {
       });
     },
   );
+  it.each([
+    [
+      'provider_search',
+      {
+        providerId: 'plugin.example',
+        profileId: 'work',
+        query: 'needle',
+        kind: 'song',
+        page: 1,
+        limit: 20,
+      },
+      'plugin.example',
+      'work',
+    ],
+    ['qqmusic_search', { query: 'needle', kind: 'song', page: 1, limit: 20 }, 'qqmusic', undefined],
+  ] as const)(
+    'cancels pending %s requests through the shared search token',
+    async (command, args, providerId, profileId) => {
+      invoke.mockImplementation((method: string) =>
+        method === command ? new Promise(() => {}) : Promise.resolve(),
+      );
+      const controller = new AbortController();
+      const pending = nativeProviderRequest(command, args, controller.signal);
+      const observed = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      const requestId = invoke.mock.calls[0]![1].requestId;
+      controller.abort();
+      await observed;
+      expect(invoke).toHaveBeenLastCalledWith('provider_search_cancel', {
+        providerId,
+        profileId,
+        requestId,
+      });
+    },
+  );
   it('cancels the exact native comment read immediately without waiting for its reply', async () => {
     const provider = createNativeMusicProvider(descriptor({ comments: true }), 'work');
     invoke.mockImplementation((method: string) =>
