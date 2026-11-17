@@ -296,3 +296,21 @@ OpenAI Codex 在工程实现、测试、审查、文档和发布流程中的协�
 
 - [插件、SDK 与开发文档](https://github.com/YAQMC/yaqmc-plugins)
 - [官网源码与 Pages 部署](https://github.com/YAQMC/yaqmc.github.io) · [访问官网](https://yaqmc.github.io/)
+
+## Star History
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://api.star-history.com/svg?repos=YAQMC/YAQMC&type=Date&theme=dark"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://api.star-history.com/svg?repos=YAQMC/YAQMC&type=Date"
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=YAQMC/YAQMC&type=Date"
+    width="100%"
+  />
+</picture>
