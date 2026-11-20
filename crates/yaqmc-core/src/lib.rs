@@ -14,6 +14,7 @@ pub mod local_api;
 pub mod local_api;
 pub mod logging;
 pub mod media;
+pub mod mv_proxy;
 pub mod pidfile;
 pub mod platform;
 pub mod playback_session;
@@ -234,6 +235,10 @@ impl CoreHandle {
 
     pub fn local_api(&self) -> Arc<crate::local_api::LocalApiService> {
         Arc::clone(&self.services.local_api)
+    }
+
+    pub(crate) fn mv_proxy(&self) -> Arc<crate::mv_proxy::MvStreamProxy> {
+        Arc::clone(&self.services.mv_proxy)
     }
 
     pub fn system_media(&self) -> Arc<crate::system_media::SystemMediaIntegration> {

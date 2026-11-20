@@ -9,6 +9,7 @@ use crate::logging::{self, persisted_log_level, LoggingHandle, LOG_LEVEL_SETTING
 #[cfg(not(feature = "test-provider"))]
 use crate::media::CachedMediaPreparer;
 use crate::media::{MediaPreparer, PlaybackSourceResolver};
+use crate::mv_proxy::MvStreamProxy;
 use crate::player::{PlayerService, PlayerSnapshot};
 use crate::plugin::ExtensionHost;
 use crate::provider_profiles::ProviderProfileManager;
@@ -41,6 +42,7 @@ pub(crate) struct CoreServices {
     pub continuation: Arc<crate::continuation::ContinuationService>,
     pub statistics: Arc<crate::statistics::StatisticsService>,
     pub local_api: Arc<LocalApiService>,
+    pub mv_proxy: Arc<MvStreamProxy>,
     pub system_media: Mutex<Option<Arc<SystemMediaIntegration>>>,
     pub runtime: tokio::runtime::Handle,
     pub windows_hwnd: Option<isize>,
@@ -170,6 +172,7 @@ impl CoreServices {
             Arc::clone(&credentials),
         )
         .map_err(CoreBootstrapError::from_error)?;
+        let mv_proxy = Arc::new(MvStreamProxy::new());
 
         Ok(Self {
             storage,
@@ -184,6 +187,7 @@ impl CoreServices {
             continuation,
             statistics,
             local_api,
+            mv_proxy,
             system_media: Mutex::new(None),
             runtime: inputs.runtime,
             windows_hwnd: inputs.windows_hwnd,

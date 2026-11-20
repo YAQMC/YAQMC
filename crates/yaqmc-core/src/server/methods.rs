@@ -107,6 +107,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_library",
     "qqmusic_search",
     "qqmusic_song",
+    "qqmusic_mv",
     "qqmusic_album",
     "qqmusic_artist",
     "qqmusic_artist_catalog",
@@ -1328,6 +1329,20 @@ async fn invoke_core(
         "qqmusic_song" => {
             let IdParams { id } = parse(&params)?;
             provider(core.qq_music().song(id).await)
+        }
+        "qqmusic_mv" => {
+            let IdParams { id } = parse(&params)?;
+            let qq_music = core.qq_music();
+            let playback = qq_music.music_video(id).await;
+            let response = match playback {
+                Ok(playback) => core
+                    .mv_proxy()
+                    .publish(playback, qq_music.media_http_client())
+                    .await
+                    .map_err(|_| ProviderCommandError::adapter("MV proxy unavailable")),
+                Err(error) => Err(error),
+            };
+            provider(response)
         }
         "qqmusic_album" => {
             let IdParams { id } = parse(&params)?;

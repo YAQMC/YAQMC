@@ -8,14 +8,14 @@ rust-version.workspace = true
 [features]
 default = ["plugins", "local-api", "system-media"]
 plugins = ["dep:lofty", "dep:md-5", "dep:rsa", "dep:ring", "dep:semver", "dep:wasmtime", "dep:wasmtime-wasi"]
-local-api = ["dep:axum"]
+local-api = []
 system-media = ["dep:mpris-server", "dep:souvlaki", "dep:windows-sys"]
 test-support = ["dep:tempfile"]
 test-provider = ["test-support", "plugins", "local-api", "system-media"]
 
 [dependencies]
 async-trait = "0.1"
-axum = { version = "0.8", optional = true, features = ["http1", "json", "tokio"] }
+axum = { version = "0.8", features = ["http1", "json", "tokio"] }
 base64 = "0.22"
 futures-util = "0.3"
 keyring = "4.1.6"
