@@ -37,6 +37,7 @@ import type {
   IssuePreview,
   LibrarySnapshot,
   LocalApiStatus,
+  MusicVideo,
   LogLevel,
   LyricDocument,
   LyricSurfaceProjection,
@@ -164,6 +165,7 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_library',
   'qqmusic_search',
   'qqmusic_song',
+  'qqmusic_mv',
   'qqmusic_album',
   'qqmusic_artist',
   'qqmusic_artist_catalog',
@@ -500,6 +502,7 @@ export type MethodParams = Exhaustive<{
     requestId?: string;
   };
   qqmusic_song: { id: string };
+  qqmusic_mv: { id: string };
   qqmusic_album: { id: string };
   qqmusic_artist: { id: string };
   qqmusic_artist_catalog: {
@@ -749,6 +752,7 @@ export type MethodResult = Exhaustive<{
   qqmusic_library: LibrarySnapshot;
   qqmusic_search: SearchResult;
   qqmusic_song: Song;
+  qqmusic_mv: MusicVideo;
   qqmusic_album: Album;
   qqmusic_artist: Artist;
   qqmusic_artist_catalog: ArtistCatalogPage;

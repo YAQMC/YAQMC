@@ -245,6 +245,20 @@ export interface NewMv {
   artist: string;
 }
 
+export interface MvPreview {
+  id: string;
+  title: string;
+  artist: string;
+  artwork: Artwork;
+  durationMs: number;
+}
+
+export interface MusicVideo extends MvPreview {
+  description: string;
+  playCount: number;
+  streamUrl: string;
+}
+
 export interface FeaturedCard {
   id: string;
   title: string;
@@ -271,7 +285,7 @@ export interface LibrarySnapshot {
   savedPlaylists: Playlist[];
 }
 
-export type CatalogSearchKind = 'song' | 'artist' | 'album' | 'playlist';
+export type CatalogSearchKind = 'song' | 'artist' | 'album' | 'playlist' | 'mv';
 
 export type SearchResult =
   | { kind: 'song'; query: string; page: number; hasMore: boolean; items: Song[] }
@@ -295,6 +309,13 @@ export type SearchResult =
       page: number;
       hasMore: boolean;
       items: PlaylistPreview[];
+    }
+  | {
+      kind: 'mv';
+      query: string;
+      page: number;
+      hasMore: boolean;
+      items: MvPreview[];
     };
 
 export type LyricSyncMode = 'unsynchronized' | 'line' | 'word';

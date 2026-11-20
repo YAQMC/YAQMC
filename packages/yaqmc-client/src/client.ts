@@ -132,6 +132,7 @@ export class YaqmcClient {
       limit: number,
     ) => this.invoke('qqmusic_search', { query, kind, page, limit }),
     song: (id: string) => this.invoke('qqmusic_song', { id }),
+    musicVideo: (id: string) => this.invoke('qqmusic_mv', { id }),
     album: (id: string) => this.invoke('qqmusic_album', { id }),
     artist: (id: string) => this.invoke('qqmusic_artist', { id }),
     artistCatalog: (
