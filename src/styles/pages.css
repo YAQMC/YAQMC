@@ -506,6 +506,73 @@
   margin: 0;
 }
 
+.mv-page {
+  gap: 24px;
+}
+
+.mv-page__stage {
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid color-mix(in srgb, var(--detail-color) 52%, var(--border));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(
+      circle at 50% 20%,
+      color-mix(in srgb, var(--detail-color) 55%, transparent),
+      transparent 62%
+    ),
+    #050505;
+  box-shadow: var(--shadow-md);
+}
+
+.mv-page__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #050505;
+  object-fit: contain;
+}
+
+.mv-page__copy {
+  max-width: 920px;
+}
+
+.mv-page__copy h1 {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  font-weight: 760;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.mv-page__artist {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 620;
+}
+
+.mv-page__description {
+  max-width: 78ch;
+  margin-top: 20px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+@media (max-width: 640px) {
+  .mv-page {
+    gap: 18px;
+  }
+
+  .mv-page__stage {
+    border-radius: var(--radius-md);
+  }
+}
+
 .artist-page__albums {
   margin-top: 24px;
 }

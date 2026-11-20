@@ -10,11 +10,13 @@ import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
 import { IconButton } from '../components/ui/IconButton';
+import { formatDuration } from '../utils/format';
 import type {
   AlbumPreview,
   ArtistPreview,
   CatalogSearchKind,
   HomeFeed,
+  MvPreview,
   PlaylistPreview,
   Song,
 } from '../domain/music';
@@ -25,7 +27,7 @@ interface SearchPageProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album', 'playlist'];
+const tabOrder: readonly CatalogSearchKind[] = ['song', 'artist', 'album', 'playlist', 'mv'];
 const SEARCH_DEBOUNCE_MS = 280;
 
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
@@ -45,7 +47,8 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   });
   const category = search.categories[search.activeKind];
   const loadMore = search.loadMore;
-  const categoryLabel = t(search.activeKind === 'song' ? 'songs' : `${search.activeKind}s`);
+  const searchKinds = provider.getMusicVideo ? tabOrder : tabOrder.filter((kind) => kind !== 'mv');
+  const categoryLabel = t(categoryLabelKey(search.activeKind));
   const queryPending = normalizedInput !== search.query;
   const searching = Boolean(
     normalizedInput &&
@@ -180,8 +183,8 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             <h1>“{normalizedInput}”</h1>
           </header>
           <div className="search-tabs" role="tablist" aria-label={t('tabsLabel')}>
-            {tabOrder.map((kind) => {
-              const label = t(kind === 'song' ? 'songs' : `${kind}s`);
+            {searchKinds.map((kind) => {
+              const label = t(categoryLabelKey(kind));
               return (
                 <button
                   key={kind}
@@ -193,16 +196,16 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
                   tabIndex={search.activeKind === kind ? 0 : -1}
                   onClick={() => search.setActiveKind(kind)}
                   onKeyDown={(event) => {
-                    const index = tabOrder.indexOf(kind);
+                    const index = searchKinds.indexOf(kind);
                     let nextIndex = index;
-                    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabOrder.length;
+                    if (event.key === 'ArrowRight') nextIndex = (index + 1) % searchKinds.length;
                     if (event.key === 'ArrowLeft')
-                      nextIndex = (index - 1 + tabOrder.length) % tabOrder.length;
+                      nextIndex = (index - 1 + searchKinds.length) % searchKinds.length;
                     if (event.key === 'Home') nextIndex = 0;
-                    if (event.key === 'End') nextIndex = tabOrder.length - 1;
+                    if (event.key === 'End') nextIndex = searchKinds.length - 1;
                     if (nextIndex !== index) {
                       event.preventDefault();
-                      moveTabFocus(tabOrder[nextIndex]!);
+                      moveTabFocus(searchKinds[nextIndex]!);
                     } else if (event.key === 'Home' || event.key === 'End') {
                       event.preventDefault();
                     }
@@ -272,6 +275,9 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
                 {search.activeKind === 'playlist' && (
                   <PreviewGrid kind="playlist" items={category.items as PlaylistPreview[]} />
                 )}
+                {search.activeKind === 'mv' && (
+                  <PreviewGrid kind="mv" items={category.items as MvPreview[]} />
+                )}
               </>
             )}
             {category.status === 'ready' && category.paginationError !== null && (
@@ -306,8 +312,8 @@ function PreviewGrid({
   kind,
   items,
 }: {
-  kind: 'artist' | 'album' | 'playlist';
-  items: ArtistPreview[] | AlbumPreview[] | PlaylistPreview[];
+  kind: 'artist' | 'album' | 'playlist' | 'mv';
+  items: ArtistPreview[] | AlbumPreview[] | PlaylistPreview[] | MvPreview[];
 }) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
   return (
@@ -350,7 +356,7 @@ function PreviewGrid({
               </span>
             )}
           </article>
-        ) : (
+        ) : kind === 'playlist' ? (
           <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
             <EntityLink
               entity="playlist"
@@ -370,10 +376,47 @@ function PreviewGrid({
               {t('playlistTrackCount', { count: (item as PlaylistPreview).trackCount })}
             </span>
           </article>
+        ) : (
+          <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
+            <EntityLink
+              entity="mv"
+              id={item.id}
+              className="catalog-preview-card__link"
+              ariaLabel={(item as MvPreview).title}
+            >
+              <Artwork artwork={(item as MvPreview).artwork} />
+              <strong>{(item as MvPreview).title}</strong>
+            </EntityLink>
+            {(item as MvPreview).artist && (
+              <span className="catalog-preview-card__artist">{(item as MvPreview).artist}</span>
+            )}
+            {(item as MvPreview).durationMs > 0 && (
+              <span className="catalog-preview-card__year">
+                {formatDuration((item as MvPreview).durationMs)}
+              </span>
+            )}
+          </article>
         ),
       )}
     </div>
   );
+}
+
+function categoryLabelKey(
+  kind: CatalogSearchKind,
+): 'songs' | 'artists' | 'albums' | 'playlists' | 'mvs' {
+  switch (kind) {
+    case 'song':
+      return 'songs';
+    case 'artist':
+      return 'artists';
+    case 'album':
+      return 'albums';
+    case 'playlist':
+      return 'playlists';
+    case 'mv':
+      return 'mvs';
+  }
 }
 
 function searchErrorMessage(

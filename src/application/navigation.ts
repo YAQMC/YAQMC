@@ -17,6 +17,7 @@ export type AppRoute =
   | { page: 'artist'; id: EntityId; providerId?: string }
   | { page: 'album'; id: EntityId; providerId?: string }
   | { page: 'playlist'; id: EntityId; providerId?: string }
+  | { page: 'mv'; id: EntityId; providerId?: string }
   | { page: 'area'; encArea: string; title: string; providerId?: string }
   /** Plugin API v4 page; rendered by the host from the plugin's declarative document. */
   | { page: 'plugin-page'; pluginId: string; pageId: string };
@@ -25,11 +26,11 @@ export type PluginsTab = 'manage' | 'store';
 
 export type ProviderCatalogRoute = Extract<
   AppRoute,
-  { page: 'song' | 'artist' | 'album' | 'playlist' | 'area' }
+  { page: 'song' | 'artist' | 'album' | 'playlist' | 'mv' | 'area' }
 >;
 
 export function isProviderCatalogRoute(route: AppRoute): route is ProviderCatalogRoute {
-  return ['song', 'artist', 'album', 'playlist', 'area'].includes(route.page);
+  return ['song', 'artist', 'album', 'playlist', 'mv', 'area'].includes(route.page);
 }
 
 export function scopeCatalogRoute(route: AppRoute, providerId: string): AppRoute {

@@ -93,6 +93,8 @@ export const zhTW = {
     },
     itemUnavailable: '此專案不可用',
     providerUnavailable: '{{provider}} 已停用或不再安裝；重新啟用後可恢復此頁面。',
+    mvLoadFailed: '無法從當前服務載入這個 MV。',
+    loadingMv: '正在載入 MV',
     albumLoadFailed: '無法從當前服務載入這張專輯。',
     songLoadFailed: '無法從當前服務載入這首歌曲。',
     artistLoadFailed: '無法從當前服務載入這位歌手。',
@@ -242,7 +244,7 @@ export const zhTW = {
       },
     },
     search: {
-      placeholder: '搜尋歌曲、歌手、專輯和歌單',
+      placeholder: '搜尋歌曲、歌手、專輯、歌單和 MV',
       label: '搜尋音樂',
       clear: '清空搜尋',
       introEyebrow: '從這裡開始',
@@ -256,6 +258,7 @@ export const zhTW = {
       artists: '歌手',
       albums: '專輯',
       playlists: '歌單',
+      mvs: 'MV',
       playlistTrackCount: '{{count}} 首歌曲',
       tabsLabel: '搜尋分類',
       loading: '正在載入…',
@@ -267,6 +270,12 @@ export const zhTW = {
       noPlaylists: '暫無可瀏覽的歌單。',
       unavailable: '搜尋暫時不可用',
       noMatches: '沒有找到“{{query}}”',
+    },
+    mv: {
+      eyebrow: '音樂影片',
+      duration: '時長',
+      playCount: '{{views}} 次播放',
+      videoLabel: '音樂影片：{{title}}',
     },
     album: {
       eyebrow: '專輯',

@@ -5,6 +5,7 @@ import type {
   Album,
   HomeFeed,
   MediaCollection,
+  MusicVideo,
   Playlist,
   Song,
 } from '../domain/music';
@@ -40,6 +41,7 @@ import { ExplorePage } from './ExplorePage';
 import { HomePage } from './HomePage';
 import { LibraryPage } from './LibraryPage';
 import { MediaLibraryPage } from './MediaLibraryPage';
+import { MvPage } from './MvPage';
 import { PlaylistPage } from './PlaylistPage';
 import { PluginPage } from './PluginPage';
 import { SearchPage } from './SearchPage';
@@ -339,6 +341,9 @@ function ProviderCatalogPage({
     case 'playlist':
       content = <ProviderPlaylistPage id={route.id} initial={initialPlaylist} />;
       break;
+    case 'mv':
+      content = <ProviderMvPage id={route.id} />;
+      break;
     case 'area':
       content = (
         <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={onNavigate} />
@@ -464,6 +469,27 @@ function ProviderSongPage({ id, initial }: { id: string; initial?: Song }) {
   ) : (
     <LoadingState label={t('loadingSong')} />
   );
+}
+
+function ProviderMvPage({ id }: { id: string }) {
+  const { t } = useTranslation('pages');
+  const provider = useMusicProvider();
+  const getMusicVideo = provider.getMusicVideo?.bind(provider);
+  const load = useCallback(
+    (entityId: string, signal: AbortSignal) => {
+      if (!getMusicVideo) {
+        return Promise.reject(new Error('The active provider does not support music videos.'));
+      }
+      return getMusicVideo(entityId, signal);
+    },
+    [getMusicVideo],
+  );
+  const resource = useEntityDetail<MusicVideo>(id, load);
+
+  if (resource.status === 'error' && !resource.data) {
+    return <MissingEntity message={t('mvLoadFailed')} onRetry={resource.retry} />;
+  }
+  return resource.data ? <MvPage video={resource.data} /> : <LoadingState label={t('loadingMv')} />;
 }
 
 function ProviderArtistPage({ id }: { id: string }) {

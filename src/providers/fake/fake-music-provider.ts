@@ -265,7 +265,9 @@ export class FakeMusicProvider implements MusicProvider {
       values.some((value) => value.toLocaleLowerCase().includes(normalized));
 
     const matches =
-      kind === 'song'
+      kind === 'mv'
+        ? []
+        : kind === 'song'
         ? allSongs.filter((song) =>
             includesQuery(
               song.title,

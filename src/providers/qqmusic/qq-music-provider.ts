@@ -21,6 +21,7 @@ import {
   type HomeFeed,
   type LibrarySnapshot,
   type LyricDocument,
+  type MusicVideo,
   type Page,
   type Playlist,
   type PlaylistMutationResult,
@@ -55,6 +56,10 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getSong(id: EntityId, signal?: AbortSignal): Promise<Song> {
     return nativeRequest('qqmusic_song', { id }, signal);
+  }
+
+  getMusicVideo(id: EntityId, signal?: AbortSignal): Promise<MusicVideo> {
+    return nativeRequest('qqmusic_mv', { id }, signal);
   }
 
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {

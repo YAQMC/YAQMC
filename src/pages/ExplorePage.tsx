@@ -332,6 +332,7 @@ function DiscoverTabContent({
                 subtitle={mv.artist}
                 cover={mv.cover}
                 eyebrow={t('mvLabel')}
+                onClick={() => onNavigate({ page: 'mv', id: mv.id })}
               />
             ))}
           </div>

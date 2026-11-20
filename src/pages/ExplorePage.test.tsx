@@ -97,6 +97,16 @@ describe('ExplorePage', () => {
     expect(usePlayerStore.getState().playTracks).toHaveBeenCalledWith([song]);
   });
 
+  it('opens a new MV from the discover grid', async () => {
+    const { onNavigate } = renderExplore(providerWithId('fake.mvs'));
+    fireEvent.click(await screen.findByRole('tab', { name: 'New MVs' }));
+
+    const mv = discoverFeed.newMvs[0]!;
+    fireEvent.click(screen.getAllByRole('button', { name: mv.title })[0]!);
+
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'mv', id: mv.id });
+  });
+
   it('uses roving focus and immediate keyboard activation', async () => {
     renderExplore(providerWithId('fake.keyboard'));
     const featured = await screen.findByRole('tab', { name: 'Featured' });

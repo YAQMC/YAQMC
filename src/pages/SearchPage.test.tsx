@@ -6,6 +6,7 @@ import { NavigationProvider } from '../application/navigation-context';
 import type {
   AlbumPreview,
   ArtistPreview,
+  MvPreview,
   PlaylistPreview,
   SearchResult,
   Song,
@@ -76,6 +77,17 @@ function playlistResult(query: string): SearchResult {
     trackCount: 42,
   };
   return { kind: 'playlist', query, items: [item], page: 1, hasMore: false };
+}
+
+function mvResult(query: string): SearchResult {
+  const item: MvPreview = {
+    id: 'mv-1',
+    title: 'MV result',
+    artist: 'MV artist',
+    artwork: { src: '', alt: 'MV result', dominantColor: '#000' },
+    durationMs: 240_000,
+  };
+  return { kind: 'mv', query, items: [item], page: 1, hasMore: false };
 }
 
 function emptyIdResults(query: string): SearchResult {
@@ -431,6 +443,41 @@ describe('SearchPage', () => {
     expect(onNavigate).toHaveBeenCalledWith({ page: 'playlist', id: 'playlist-1' });
   });
 
+  it('searches and opens music-video previews when the provider supports them', async () => {
+    const provider = new FakeMusicProvider();
+    Object.defineProperty(provider, 'getMusicVideo', { value: vi.fn() });
+    const onNavigate = vi.fn();
+    vi.spyOn(provider, 'search').mockImplementation(async (query, kind) =>
+      kind === 'mv' ? mvResult(query) : resultFor(query),
+    );
+    render(
+      <ProviderContext.Provider value={provider}>
+        <NavigationProvider onNavigate={onNavigate}>
+          <SearchPage feed={homeFeed} onNavigate={onNavigate} />
+        </NavigationProvider>
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search music' }), {
+      target: { value: 'needle' },
+    });
+    await waitFor(() => expect(provider.search).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'MVs' }));
+
+    await screen.findByText('MV result');
+    expect(screen.getByText('MV artist')).toBeInTheDocument();
+    expect(screen.getByText('4:00')).toBeInTheDocument();
+    expect(provider.search).toHaveBeenLastCalledWith(
+      'needle',
+      'mv',
+      expect.any(AbortSignal),
+      1,
+      20,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'MV result' }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'mv', id: 'mv-1' });
+  });
+
   it('keeps invalid preview IDs semantic and exposes all four search categories', async () => {
     const provider = new FakeMusicProvider();
     const onNavigate = vi.fn();
@@ -484,7 +531,10 @@ describe('SearchPage', () => {
       </ProviderContext.Provider>,
     );
     const input = screen.getByRole('textbox', { name: 'Search music' });
-    expect(input).toHaveAttribute('placeholder', 'Search songs, artists, albums, and playlists');
+    expect(input).toHaveAttribute(
+      'placeholder',
+      'Search songs, artists, albums, playlists, and MVs',
+    );
     fireEvent.change(input, { target: { value: 'needle' } });
     await waitFor(() => expect(provider.search).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('tab', { name: 'Playlists' })).toBeInTheDocument();

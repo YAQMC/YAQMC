@@ -69,6 +69,8 @@ describe('EntityLink', () => {
     ['song', 'song-1'],
     ['artist', 'artist-1'],
     ['album', 'album-1'],
+    ['playlist', 'playlist-1'],
+    ['mv', 'mv-1'],
   ] as const)('routes a trimmed %s ID', (entity, id) => {
     const onNavigate = vi.fn();
     render(

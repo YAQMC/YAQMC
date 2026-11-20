@@ -3,6 +3,7 @@ import type {
   ArtistPreview,
   AlbumPreview,
   CatalogSearchKind,
+  MvPreview,
   PlaylistPreview,
   SearchResult,
   Song,
@@ -13,7 +14,7 @@ export type SearchCategoryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface SearchCategoryState {
   status: SearchCategoryStatus;
-  items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview>;
+  items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview | MvPreview>;
   page: number;
   hasMore: boolean;
   error: unknown | null;
@@ -72,6 +73,7 @@ function emptyCategories(): Record<CatalogSearchKind, SearchCategoryState> {
     artist: emptyCategory(),
     album: emptyCategory(),
     playlist: emptyCategory(),
+    mv: emptyCategory(),
   };
 }
 
@@ -149,7 +151,9 @@ function reduce(state: CatalogSearchState, action: SearchAction): CatalogSearchS
   return { ...state, categories };
 }
 
-function uniqueById(items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview>) {
+function uniqueById(
+  items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview | MvPreview>,
+) {
   const seen = new Set<string>();
   return items.filter((item) => {
     const id = item.id.trim();
@@ -170,6 +174,8 @@ function deduplicateResult(result: SearchResult): SearchResult {
       return { ...result, items: uniqueById(result.items) as AlbumPreview[] };
     case 'playlist':
       return { ...result, items: uniqueById(result.items) as PlaylistPreview[] };
+    case 'mv':
+      return { ...result, items: uniqueById(result.items) as MvPreview[] };
   }
 }
 

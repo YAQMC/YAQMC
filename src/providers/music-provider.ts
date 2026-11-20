@@ -19,6 +19,7 @@ import type {
   HomeFeed,
   LibrarySnapshot,
   LyricDocument,
+  MusicVideo,
   Page,
   Playlist,
   PlaylistMutationResult,
@@ -73,6 +74,8 @@ export interface MusicProvider extends CatalogMusicProvider, LyricsMusicProvider
   readonly displayName: string;
   /** Optional read-only comments capability; cursors belong to the provider. */
   getComments?(request: SongCommentsRequest, signal?: AbortSignal): Promise<SongCommentsPage>;
+  /** Optional music-video capability. */
+  getMusicVideo?(id: EntityId, signal?: AbortSignal): Promise<MusicVideo>;
 }
 
 export interface AccountMusicProvider {
