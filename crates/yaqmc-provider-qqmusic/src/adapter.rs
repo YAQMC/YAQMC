@@ -490,6 +490,12 @@ impl api::MusicProvider for QQMusicService {
         map_output_for_profile(value, self.profile_key())
     }
 
+    async fn music_video(&self, id: String) -> api::ProviderResult<api::MvPlaybackSource> {
+        QQMusicService::music_video(self, id)
+            .await
+            .map_err(provider_error)
+    }
+
     async fn album(&self, id: String) -> api::ProviderResult<api::Album> {
         let value = QQMusicService::album(self, id)
             .await

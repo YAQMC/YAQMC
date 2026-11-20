@@ -5,10 +5,10 @@ use crate::{
     Album, AreaFeed, Artist, ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference,
     CacheStats, CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest,
     CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest,
-    FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, OAuthLoginProvider,
-    OAuthPrepareResult, Page, PlaybackSourceResolver, Playlist, PlaylistMutationResult,
-    PlaylistTrackMutationRequest, ProviderResult, ProviderStatus, RemotePlayHistoryItem,
-    RenamePlaylistRequest, SearchResult, ShareTarget, Song,
+    FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, MvPlaybackSource,
+    OAuthLoginProvider, OAuthPrepareResult, Page, PlaybackSourceResolver, Playlist,
+    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderResult, ProviderStatus,
+    RemotePlayHistoryItem, RenamePlaylistRequest, SearchResult, ShareTarget, Song,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -270,6 +270,13 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
         limit: u32,
     ) -> ProviderResult<SearchResult>;
     async fn song(&self, id: String) -> ProviderResult<Song>;
+    async fn music_video(&self, _id: String) -> ProviderResult<MvPlaybackSource> {
+        Err(crate::ProviderCommandError {
+            code: "unsupported-operation".to_owned(),
+            message: "this provider does not support music videos".to_owned(),
+            retryable: false,
+        })
+    }
     async fn album(&self, id: String) -> ProviderResult<Album>;
     async fn artist(&self, id: String) -> ProviderResult<Artist>;
     async fn artist_catalog(

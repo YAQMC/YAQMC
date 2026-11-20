@@ -33,6 +33,51 @@ pub struct PlaylistPreview {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MvPreview {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub artwork: Artwork,
+    pub duration_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicVideo {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub artwork: Artwork,
+    pub duration_ms: u64,
+    pub description: String,
+    pub play_count: u64,
+    pub stream_url: String,
+}
+
+#[derive(Clone)]
+pub struct MvPlaybackSource {
+    pub video: MusicVideo,
+    pub upstream_url: String,
+    pub headers: Vec<(String, String)>,
+    pub mime_type: String,
+    pub content_length: u64,
+}
+
+impl std::fmt::Debug for MvPlaybackSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MvPlaybackSource")
+            .field("video", &self.video)
+            .field("upstream_url", &"[redacted]")
+            .field("headers", &"[redacted]")
+            .field("mime_type", &self.mime_type)
+            .field("content_length", &self.content_length)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Artist {
     pub id: String,
     pub name: String,
@@ -382,6 +427,7 @@ pub enum CatalogSearchKind {
     Artist,
     Album,
     Playlist,
+    Mv,
 }
 
 impl CatalogSearchKind {
@@ -391,6 +437,7 @@ impl CatalogSearchKind {
             Self::Artist => "artist",
             Self::Album => "album",
             Self::Playlist => "playlist",
+            Self::Mv => "mv",
         }
     }
 }
@@ -425,6 +472,13 @@ pub enum SearchResult {
         #[serde(rename = "hasMore")]
         has_more: bool,
         items: Vec<PlaylistPreview>,
+    },
+    Mv {
+        query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<MvPreview>,
     },
 }
 

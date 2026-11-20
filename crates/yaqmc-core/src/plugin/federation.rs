@@ -7,7 +7,7 @@ use yaqmc_provider_api::{
     Album, AlbumPreview, AreaFeed, Artist, ArtistCatalogKind, ArtistCatalogPage, ArtistPreview,
     AudioQualityPreference, CacheStats, CatalogProvider, CatalogProviderCapabilities,
     CatalogSearchKind, DiscoverFeed, FeaturedCard, FeaturedRelease, HomeFeed, LibrarySnapshot,
-    LyricsProvider, MediaCollection, PlaybackSourceError, PlaybackSourceProvider,
+    LyricsProvider, MediaCollection, MvPreview, PlaybackSourceError, PlaybackSourceProvider,
     PlaybackSourceResolver, PlaybackSourceSelection, Playlist, PlaylistPreview,
     ProviderCapabilities, ProviderCommandError, ProviderResult, ProviderStatus,
     ProviderTrackReference, ResolvedPlaybackSource, SearchResult, Song,
@@ -226,6 +226,11 @@ impl FederatedProvider {
         playlist
     }
 
+    fn remap_mv_preview(&self, member: &FederationMember, mut mv: MvPreview) -> MvPreview {
+        mv.id = encode_id(member, &mv.id);
+        mv
+    }
+
     fn remap_search(&self, member: &FederationMember, result: SearchResult) -> SearchResult {
         match result {
             SearchResult::Song {
@@ -282,6 +287,20 @@ impl FederatedProvider {
                 items: items
                     .into_iter()
                     .map(|playlist| self.remap_playlist_preview(member, playlist))
+                    .collect(),
+            },
+            SearchResult::Mv {
+                query,
+                page,
+                has_more,
+                items,
+            } => SearchResult::Mv {
+                query,
+                page,
+                has_more,
+                items: items
+                    .into_iter()
+                    .map(|mv| self.remap_mv_preview(member, mv))
                     .collect(),
             },
         }
@@ -1003,6 +1022,28 @@ fn merge_search_results(
             }
             let items = interleave(buckets, limit);
             Ok(SearchResult::Playlist {
+                query: query.to_owned(),
+                page,
+                has_more,
+                items,
+            })
+        }
+        CatalogSearchKind::Mv => {
+            let mut buckets = Vec::new();
+            let mut has_more = false;
+            for result in results {
+                if let SearchResult::Mv {
+                    has_more: result_has_more,
+                    items,
+                    ..
+                } = result
+                {
+                    has_more |= result_has_more;
+                    buckets.push(items);
+                }
+            }
+            let items = interleave(buckets, limit);
+            Ok(SearchResult::Mv {
                 query: query.to_owned(),
                 page,
                 has_more,

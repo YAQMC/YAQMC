@@ -46,10 +46,10 @@ use yaqmc_provider_api::{
     AlbumPreview, AlbumSummary, Artist, ArtistCatalogKind, ArtistCatalogPage, ArtistPreview,
     ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality, CacheStats,
     CatalogSearchKind, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode,
-    LyricWord, PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
-    PlaybackSourceResolver, PlaylistPreview, ProviderProfileKey, ProviderStorage,
-    ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource, SearchResult, Song,
-    SongAvailability, SpawnBlockingCredentialStore,
+    LyricWord, MusicVideo, MvPlaybackSource, MvPreview, PlaybackCapability, PlaybackEpochGuard,
+    PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, PlaylistPreview,
+    ProviderProfileKey, ProviderStorage, ProviderStorageExt, ProviderTrackReference,
+    ResolvedPlaybackSource, SearchResult, Song, SongAvailability, SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -968,6 +968,166 @@ impl QQMusicService {
     ) -> Result<SearchResult, QQMusicError> {
         self.search_with_cancellation(query, kind, page, limit, CancellationToken::new())
             .await
+    }
+
+    fn select_mv_mp4_source(
+        url_set: &qqmusic_api::models::mv::MvUrlSet,
+    ) -> Option<(&qqmusic_api::models::mv::MvUrlItem, &str)> {
+        // QQ Music exposes `url` as an unsigned download entry which currently
+        // answers 403 on current CDN hosts. The signed `freeflow_url` path is the
+        // browser-playable form and supports range requests. Prefer that bucket
+        // across all quality variants before falling back to compatibility paths.
+        Self::select_mv_mp4_source_from(&url_set.mp4, |source| &source.freeflow_url)
+            .or_else(|| Self::select_mv_mp4_source_from(&url_set.mp4, |source| &source.comm_url))
+            .or_else(|| Self::select_mv_mp4_source_from(&url_set.mp4, |source| &source.url))
+    }
+
+    fn select_mv_mp4_source_from<'a>(
+        sources: &'a [qqmusic_api::models::mv::MvUrlItem],
+        urls: impl Fn(&'a qqmusic_api::models::mv::MvUrlItem) -> &'a [String],
+    ) -> Option<(&'a qqmusic_api::models::mv::MvUrlItem, &'a str)> {
+        sources
+            .iter()
+            .filter(|source| source.code == 0)
+            .filter_map(|source| Self::select_mv_mp4_url(urls(source)).map(|url| (source, url)))
+            .max_by_key(|(source, _)| source.file_size)
+    }
+
+    fn select_mv_mp4_url(urls: &[String]) -> Option<&str> {
+        urls.iter()
+            .map(String::as_str)
+            .find(|url| !url.trim().is_empty() && url.starts_with("https://"))
+            .or_else(|| {
+                urls.iter()
+                    .map(String::as_str)
+                    .find(|url| !url.trim().is_empty())
+            })
+    }
+
+    pub async fn music_video(&self, id: String) -> Result<MvPlaybackSource, QQMusicError> {
+        let media_id = catalog_entity_mid(&id, "qqmusic:mv:")?.to_owned();
+        if media_id.is_empty() {
+            return Err(QQMusicError::InvalidRequest);
+        }
+        let session = self.auth.current_session().await;
+        let credential = session
+            .as_ref()
+            .and_then(|session| crate::qmapi::credential::credential_from_session(session).ok());
+        let client =
+            crate::qmapi::qmapi_client_with(credential.clone(), Some(qqmusic_api::Platform::Web))
+                .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        let ids = [media_id.clone()];
+        let urls = client
+            .mv
+            .get_mv_urls(&ids)
+            .await
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        let url_set = urls
+            .data
+            .get(&media_id)
+            .or_else(|| urls.data.values().next())
+            .ok_or(QQMusicError::NotFound)?;
+        let (source, upstream_url) =
+            Self::select_mv_mp4_source(url_set).ok_or(QQMusicError::NotFound)?;
+        let upstream_url = upstream_url.to_owned();
+
+        let detail = client.mv.get_detail(&ids).await.ok().and_then(|response| {
+            response
+                .data
+                .get(&media_id)
+                .or_else(|| response.data.values().next())
+                .cloned()
+        });
+        let discovered = if detail.is_none() {
+            self.discover(false)
+                .await
+                .ok()
+                .and_then(|feed| feed.new_mvs.into_iter().find(|mv| mv.id == media_id))
+        } else {
+            None
+        };
+        let title = detail
+            .as_ref()
+            .map(|detail| {
+                clean_text(if detail.base.name.trim().is_empty() {
+                    &detail.base.title
+                } else {
+                    &detail.base.name
+                })
+            })
+            .filter(|title| !title.is_empty())
+            .or_else(|| discovered.as_ref().map(|mv| mv.title.clone()))
+            .unwrap_or_else(|| "Music video".to_owned());
+        let artist = detail
+            .as_ref()
+            .and_then(|detail| {
+                detail.singers.iter().find_map(|singer| {
+                    singer
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .map(clean_text)
+                        .filter(|name| !name.is_empty())
+                })
+            })
+            .or_else(|| discovered.as_ref().map(|mv| mv.artist.clone()))
+            .unwrap_or_default();
+        let cover = detail
+            .as_ref()
+            .map(|detail| detail.cover_pic.as_str())
+            .filter(|cover| !cover.trim().is_empty())
+            .map(str::to_owned)
+            .or_else(|| discovered.as_ref().map(|mv| mv.cover.clone()))
+            .unwrap_or_default();
+        let duration_ms = detail
+            .as_ref()
+            .map(|detail| u64::try_from(detail.duration).unwrap_or_default())
+            .filter(|duration| *duration > 0)
+            .map(|duration| duration.saturating_mul(1_000))
+            .or_else(|| discovered.as_ref().map(|mv| mv.duration_ms))
+            .unwrap_or_else(|| {
+                u64::try_from(url_set.duration)
+                    .unwrap_or_default()
+                    .saturating_mul(1_000)
+            });
+        let description = detail
+            .as_ref()
+            .map(|detail| clean_text(&detail.desc))
+            .unwrap_or_default();
+        let play_count = detail
+            .as_ref()
+            .and_then(|detail| u64::try_from(detail.playcnt).ok())
+            .unwrap_or_default();
+        let mut headers = vec![
+            ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
+            ("Origin".to_owned(), "https://y.qq.com".to_owned()),
+            (
+                "User-Agent".to_owned(),
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36".to_owned(),
+            ),
+        ];
+        if let Some(cookie_header) = session
+            .as_ref()
+            .map(|session| session.cookie_header.trim())
+            .filter(|cookie_header| !cookie_header.is_empty())
+        {
+            headers.push(("Cookie".to_owned(), cookie_header.to_owned()));
+        }
+        Ok(MvPlaybackSource {
+            video: MusicVideo {
+                id: entity_id("qqmusic:mv:", &media_id),
+                title,
+                artist,
+                artwork: artwork_from_provider_url(&cover, "Music video", color_for(&media_id)),
+                duration_ms,
+                description,
+                play_count,
+                stream_url: String::new(),
+            },
+            upstream_url,
+            headers,
+            mime_type: "video/mp4".to_owned(),
+            content_length: u64::try_from(source.file_size).unwrap_or_default(),
+        })
     }
 
     pub(crate) async fn search_with_cancellation(
@@ -2091,7 +2251,10 @@ impl QQMusicClient {
         let _proxy_environment_lock = transport::proxy_environment_lock();
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(15))
+            // This client also streams MV responses. A total-request timeout
+            // would cancel a healthy video after the first bytes, so time out
+            // stalled reads while allowing a long-lived media body.
+            .read_timeout(Duration::from_secs(30))
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
             .map_err(|_| QQMusicError::Offline)?;
@@ -2174,6 +2337,7 @@ impl QQMusicClient {
                     CatalogSearchKind::Song => qqmusic_api::SearchType::Song,
                     CatalogSearchKind::Artist => qqmusic_api::SearchType::Singer,
                     CatalogSearchKind::Album => qqmusic_api::SearchType::Album,
+                    CatalogSearchKind::Mv => qqmusic_api::SearchType::Mv,
                     CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
                 };
                 let response = catalog
@@ -2219,6 +2383,16 @@ impl QQMusicClient {
                             .album
                             .into_iter()
                             .filter_map(normalize_qm_album_preview)
+                            .collect(),
+                    }),
+                    CatalogSearchKind::Mv => Ok(SearchResult::Mv {
+                        query: query.to_owned(),
+                        page,
+                        has_more,
+                        items: response
+                            .mv
+                            .into_iter()
+                            .filter_map(normalize_qm_mv_preview)
                             .collect(),
                     }),
                     CatalogSearchKind::Playlist => {
@@ -3454,6 +3628,36 @@ fn normalize_qm_album_preview(
     })
 }
 
+fn normalize_qm_mv_preview(raw: qqmusic_api::models::search::MvSearch) -> Option<MvPreview> {
+    let title = clean_text(if raw.base.name.trim().is_empty() {
+        &raw.base.title
+    } else {
+        &raw.base.name
+    });
+    if title.is_empty() {
+        return None;
+    }
+    let media_id = non_empty(raw.base.vid.clone()).or_else(|| {
+        (raw.base.id > 0)
+            .then(|| raw.base.id.to_string())
+            .and_then(non_empty)
+    })?;
+    let artist = clean_text(&raw.singer_name);
+    Some(MvPreview {
+        id: entity_id("qqmusic:mv:", &media_id),
+        title: title.clone(),
+        artist: artist.clone(),
+        artwork: artwork_from_provider_url(
+            &raw.pic,
+            &title,
+            color_for(&format!("{media_id}:{artist}")),
+        ),
+        duration_ms: u64::try_from(raw.duration)
+            .unwrap_or_default()
+            .saturating_mul(1_000),
+    })
+}
+
 fn normalize_qm_playlist_preview(
     raw: crate::qmapi::catalog::PlaylistSearchItem,
 ) -> Option<PlaylistPreview> {
@@ -4402,6 +4606,12 @@ fn empty_search_result(query: String, kind: CatalogSearchKind) -> SearchResult {
             has_more: false,
             items: Vec::new(),
         },
+        CatalogSearchKind::Mv => SearchResult::Mv {
+            query,
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        },
     }
 }
 
@@ -4499,6 +4709,14 @@ fn search_result_matches(
             CatalogSearchKind::Album,
         )
         | (
+            SearchResult::Mv {
+                query: cached,
+                page: cached_page,
+                ..
+            },
+            CatalogSearchKind::Mv,
+        )
+        | (
             SearchResult::Playlist {
                 query: cached,
                 page: cached_page,
@@ -4515,7 +4733,8 @@ fn search_result_songs(result: &SearchResult) -> Vec<&Song> {
         SearchResult::Song { items, .. } => items.iter().collect(),
         SearchResult::Artist { .. }
         | SearchResult::Album { .. }
-        | SearchResult::Playlist { .. } => Vec::new(),
+        | SearchResult::Playlist { .. }
+        | SearchResult::Mv { .. } => Vec::new(),
     }
 }
 
@@ -4665,6 +4884,33 @@ mod tests {
         media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver},
         storage::StorageService,
     };
+
+    #[test]
+    fn mv_playback_prefers_signed_freeflow_url_over_download_entry() {
+        let url_set = qqmusic_api::models::mv::MvUrlSet {
+            mp4: vec![
+                qqmusic_api::models::mv::MvUrlItem {
+                    url: vec!["https://cdn.invalid/direct".to_owned()],
+                    freeflow_url: vec!["https://cdn.invalid/play.mp4?fname=signed".to_owned()],
+                    code: 0,
+                    file_size: 10,
+                    ..Default::default()
+                },
+                qqmusic_api::models::mv::MvUrlItem {
+                    url: vec!["https://cdn.invalid/larger-direct".to_owned()],
+                    freeflow_url: Vec::new(),
+                    code: 0,
+                    file_size: 20,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let (source, url) = QQMusicService::select_mv_mp4_source(&url_set).expect("MV source");
+        assert_eq!(source.file_size, 10);
+        assert_eq!(url, "https://cdn.invalid/play.mp4?fname=signed");
+    }
 
     #[test]
     fn home_cache_is_isolated_by_opaque_account_scope() {
@@ -6241,6 +6487,112 @@ mod tests {
             if !items.is_empty()
                 && items.iter().all(|item| item.id.starts_with("qqmusic:playlist:"))
                 && items.iter().all(|item| !item.title.contains("<em>")))
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check"]
+    async fn live_music_video_search_and_source_contract() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = QQMusicService::new(
+            storage,
+            Arc::new(MemoryCredentialStore::default()),
+            root.path().join("fixtures"),
+        )
+        .expect("service");
+        let result = service
+            .search("稻香".to_owned(), CatalogSearchKind::Mv, 1, 5)
+            .await
+            .expect("live MV search");
+        let search_mv = match result {
+            SearchResult::Mv { items, .. } => items.into_iter().next().expect("at least one MV"),
+            _ => panic!("MV search returned another kind"),
+        };
+        assert!(!search_mv.title.is_empty());
+        assert!(!search_mv.title.contains("<em>"));
+        assert!(!search_mv.artist.is_empty());
+        assert!(search_mv.duration_ms > 0);
+
+        let playback = service
+            .music_video(search_mv.id.clone())
+            .await
+            .expect("live MV source");
+        assert_eq!(playback.video.id, search_mv.id);
+        assert!(!playback.video.title.is_empty());
+        assert!(playback.video.stream_url.is_empty());
+        assert!(!playback.upstream_url.is_empty());
+        assert!(playback.content_length > 0);
+        assert!(playback
+            .headers
+            .iter()
+            .any(|(name, value)| name.eq_ignore_ascii_case("referer")
+                && value == "https://y.qq.com/"));
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check; requires the real signed-in session in the platform keyring"]
+    async fn live_authenticated_music_video_proxy_range_contract() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = QQMusicService::new(
+            storage,
+            Arc::new(PlatformCredentialStore::new()),
+            root.path().join("fixtures"),
+        )
+        .expect("service");
+        service.restore_session().await;
+        assert_eq!(
+            service.account_snapshot().await.state_name(),
+            "authenticated"
+        );
+        let result = service
+            .search("稻香".to_owned(), CatalogSearchKind::Mv, 1, 5)
+            .await
+            .expect("live authenticated MV search");
+        let search_mv = match result {
+            SearchResult::Mv { items, .. } => items.into_iter().next().expect("at least one MV"),
+            _ => panic!("MV search returned another kind"),
+        };
+        let playback = service
+            .music_video(search_mv.id)
+            .await
+            .expect("live authenticated MV source");
+        assert!(playback
+            .headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("cookie")));
+
+        let proxy = yaqmc_core::mv_proxy::MvStreamProxy::new();
+        let published = proxy
+            .publish(playback, service.http_client())
+            .await
+            .expect("publish live MV");
+        assert!(published.stream_url.starts_with("http://127.0.0.1:"));
+        let response = service
+            .http_client()
+            .get(published.stream_url)
+            .header(reqwest::header::RANGE, "bytes=0-1023")
+            .send()
+            .await
+            .expect("request proxied MV");
+        assert_eq!(response.status(), reqwest::StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("video/mp4")
+        );
+        assert_eq!(
+            response.bytes().await.expect("proxied MV range").len(),
+            1024
         );
     }
 
