@@ -26,7 +26,7 @@ export const APP_HOST = 'yaqmc';
  *   (local API). No extra `ws:` here (dev HMR is `!app.isPackaged`, later).
  * - worker-src 'self' blob: — unchanged (plugin blob workers).
  * - script-src — absent in FACT, so default-src applies. No 'unsafe-inline'/'unsafe-eval'.
- * - media-src — absent in FACT; §28.3 would add it. Playback is native (rodio), so omit.
+ * - media-src — audio playback stays native; allow only the loopback MV proxy.
  * - object-src / frame-src / base-uri — absent in FACT; do not add.
  *
  * Delivered as a protocol-handler response header (not a meta tag) so workers inherit it.
@@ -37,6 +37,7 @@ export const APP_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   'connect-src app: http://127.0.0.1:19532',
+  "media-src 'self' app: http://127.0.0.1:*",
   "worker-src 'self' blob:",
 ].join('; ');
 

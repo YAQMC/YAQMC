@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'YAQMC',
   webDir: '../../dist-android',
   android: {
-    allowMixedContent: false,
+    // The MV proxy is HTTP on loopback; network_security_config permits no other cleartext host.
+    allowMixedContent: true,
     captureInput: true,
   },
 };
