@@ -12,7 +12,7 @@ default = []
 async-trait = "0.1"
 base64 = "0.22"
 md-5 = "0.10.6"
-qqmusic-api = { git = "https://github.com/YAQMC/qm-api-rs.git", rev = "bab630d44901f80cae47dd0f09314950d0028e23" }
+qqmusic-api = { git = "https://github.com/YAQMC/qm-api-rs.git", rev = "f07b298615220be33274fe3981e1fe3b7cc0a871" }
 quick-xml = "0.41"
 rand = "0.9"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "query", "rustls", "stream", "system-proxy", "cookies", "gzip", "brotli"] }
