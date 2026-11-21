@@ -116,7 +116,7 @@ impl QQMusicClient {
             .filter_map(|card| {
                 let title = clean_text(&card.title);
                 (!title.is_empty()).then(|| NewMv {
-                    id: card.id,
+                    id: music_video_id(&card.id),
                     title,
                     cover: cover(&card.cover_url),
                     artist: clean_text(&card.artist),

@@ -1039,10 +1039,11 @@ impl QQMusicService {
                 .cloned()
         });
         let discovered = if detail.is_none() {
-            self.discover(false)
-                .await
-                .ok()
-                .and_then(|feed| feed.new_mvs.into_iter().find(|mv| mv.id == media_id))
+            self.discover(false).await.ok().and_then(|feed| {
+                feed.new_mvs
+                    .into_iter()
+                    .find(|mv| strip_entity_prefix(&mv.id, "qqmusic:mv:") == media_id.as_str())
+            })
         } else {
             None
         };
@@ -3644,7 +3645,7 @@ fn normalize_qm_mv_preview(raw: qqmusic_api::models::search::MvSearch) -> Option
     })?;
     let artist = clean_text(&raw.singer_name);
     Some(MvPreview {
-        id: entity_id("qqmusic:mv:", &media_id),
+        id: music_video_id(&media_id),
         title: title.clone(),
         artist: artist.clone(),
         artwork: artwork_from_provider_url(
@@ -4523,6 +4524,10 @@ fn track_id(mid: &str) -> String {
 
 fn album_id(mid: &str) -> String {
     entity_id("qqmusic:album:", mid)
+}
+
+fn music_video_id(id: &str) -> String {
+    entity_id("qqmusic:mv:", strip_entity_prefix(id, "qqmusic:mv:"))
 }
 
 fn entity_id(prefix: &str, mid: &str) -> String {

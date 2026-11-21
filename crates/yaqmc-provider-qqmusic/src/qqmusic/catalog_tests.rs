@@ -286,6 +286,8 @@ async fn discovery_typed_mapping_preserves_sections_and_host_artwork_policy() {
     assert_eq!(podcasts[0].title, "Playlist title");
     assert_eq!(podcasts[0].cover, "https://y.gtimg.cn/fixture.jpg");
     let mvs = client.new_mvs().await.unwrap();
+    assert_eq!(mvs[0].id, "qqmusic:mv:42");
+    assert_eq!(catalog_entity_mid(&mvs[0].id, "qqmusic:mv:").unwrap(), "42");
     assert_eq!(mvs[0].duration_ms, 180_000);
     assert_eq!(mvs[0].artist, "Artist");
     assert!(mvs[0].cover.is_empty());
