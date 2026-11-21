@@ -21,7 +21,7 @@ section empty instead of breaking the page.
 - **Categories** (`categories`) — the official category shelf from
   `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist`, listing 25+ music areas (国潮, 经典, 轻音乐,
   影视, …). Tapping a category opens its dedicated **area page**.
-- **New MVs** (`newMvs`) — recent music videos from `MvService.MvInfoProServer/GetNewMv`, shown as cover cards
+- **New MVs** (`newMvs`) — recent music videos from `MvService.MvInfoProServer/GetNewMv`, shown as cover cards; each card uses the response's playable string `vid`, not the numeric catalogue `mvid`
   (MV playback is not yet wired up).
 - **Podcasts** (`podcasts`) — radio/podcast shows from `music.longRadio.recommend/getRadioList`, shown as cover
   cards.

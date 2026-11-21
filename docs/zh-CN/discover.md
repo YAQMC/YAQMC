@@ -18,7 +18,7 @@
 - **新专辑**（`newAlbums`）——从新歌榜（`topId 27`）的歌曲按专辑分组生成的专辑卡片。
 - **分类**（`categories`）——来自 `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist` 的官方分类
   楼层，列出 25+ 个音乐专区（国潮、经典、轻音乐、影视等）。点击分类会打开对应的**专区详情页**。
-- **新MV**（`newMvs`）——来自 `MvService.MvInfoProServer/GetNewMv` 的近期音乐视频，以封面卡片呈现
+- **新MV**（`newMvs`）——来自 `MvService.MvInfoProServer/GetNewMv` 的近期音乐视频，以封面卡片呈现；卡片使用响应中可播放的字符串 `vid`，数字 `mvid` 仅作为目录标识
   （MV 播放暂未接入）。
 - **播客**（`podcasts`）——来自 `music.longRadio.recommend/getRadioList` 的电台/播客节目，以封面卡片呈现。
 - **焦点**（`featured`）——来自 `music.musicHall.MusicHallPlatformSvr/GetFocus` 的音乐馆焦点推荐楼层。

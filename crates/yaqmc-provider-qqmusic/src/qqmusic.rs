@@ -91,7 +91,7 @@ const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
 const SEARCH_RATE_LIMIT_RETRY_DELAY: Duration = Duration::from_millis(750);
 const GUEST_HOME_CACHE_KEY: &str = "qqmusic:home:v5:guest";
-const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v2";
+const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v3";
 
 fn home_cache_location(session: Option<&SessionRecord>) -> (String, &'static str) {
     match session {

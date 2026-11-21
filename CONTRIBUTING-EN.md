@@ -15,7 +15,7 @@ npm run dev
 
 The full Electron desktop and Rust workspace declare the `qm-api-rs` crate (`qqmusic-api`) as an unconditional
 production dependency, pinned at
-`bab630d44901f80cae47dd0f09314950d0028e23`. A sibling checkout at `../qm-api-rs`
+`1dbbf0b40e5b874ba2a20dda965cd5e57fe921d7`. A sibling checkout at `../qm-api-rs`
 is checked against that pin by `node scripts/ci/qm-api-rs-access.mjs --check`.
 See [release requirements](docs/release/README.md) and [CI](docs/ci.md) for the production boundary and
 release gates.
