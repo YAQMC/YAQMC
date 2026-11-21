@@ -66,6 +66,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "provider_search",
     "provider_search_cancel",
     "provider_song",
+    "provider_mv",
     "provider_album",
     "provider_artist",
     "provider_artist_catalog",
@@ -751,6 +752,28 @@ async fn invoke_core(
                 require_catalog_provider_for_profile
             );
             provider(catalog.catalog_song(id).await)
+        }
+        "provider_mv" => {
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
+            let music_provider = require_provider_for_scope!(
+                core,
+                &params,
+                &provider_id,
+                require_music_video_provider_for_profile
+            );
+            let media_client = music_provider.media_http_client();
+            let playback = music_provider.music_video(id).await;
+            let response = match playback {
+                Ok(playback) => core
+                    .mv_proxy()
+                    .publish(playback, media_client)
+                    .await
+                    .map_err(|_| ProviderCommandError::adapter("MV proxy unavailable")),
+                Err(error) => Err(error),
+            };
+            provider(response)
         }
         "provider_album" => {
             let ProviderEntityParams {

@@ -198,6 +198,7 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec("provider_song", MethodOwner::Core, OriginClass::Main),
+    spec("provider_mv", MethodOwner::Core, OriginClass::Main),
     spec("provider_album", MethodOwner::Core, OriginClass::Main),
     spec("provider_artist", MethodOwner::Core, OriginClass::Main),
     spec(

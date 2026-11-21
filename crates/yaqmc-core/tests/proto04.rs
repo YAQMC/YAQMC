@@ -266,6 +266,23 @@ fn registry_core_methods_match_dispatch_arms() {
 }
 
 #[test]
+fn provider_list_advertises_qqmusic_video_playback() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        let descriptors = dispatch(&core, &host, WindowOrigin::Main, "provider_list", None)
+            .await
+            .expect("list providers");
+        let qqmusic = descriptors
+            .as_array()
+            .expect("provider descriptors")
+            .iter()
+            .find(|descriptor| descriptor["providerId"] == "qqmusic")
+            .expect("QQ Music descriptor");
+        assert_eq!(qqmusic["capabilities"]["musicVideos"], true);
+    });
+}
+
+#[test]
 fn provider_profile_lifecycle_dispatch_round_trips_typed_descriptors() {
     let (_root, runtime, core, host) = boot();
     runtime.block_on(async {

@@ -35,6 +35,8 @@ pub struct ProviderCapabilitySummary {
     pub lyrics: bool,
     #[serde(default)]
     pub comments: bool,
+    #[serde(default)]
+    pub music_videos: bool,
     pub share: bool,
     pub account: bool,
 }
@@ -767,6 +769,7 @@ impl fmt::Debug for MusicProviderCapabilityFacade {
             .field("playback", &self.playback.is_some())
             .field("recommendations", &self.recommendations.is_some())
             .field("lyrics", &self.lyrics.is_some())
+            .field("music_videos", &self.music_videos())
             .field("share", &self.share.is_some())
             .field("account", &self.account.is_some())
             .field("legacy", &self.legacy_provider.is_some())
@@ -838,6 +841,7 @@ impl MusicProviderCapabilityFacade {
                 recommendations: self.recommendations.is_some(),
                 lyrics: self.lyrics.is_some(),
                 comments: self.comments.is_some(),
+                music_videos: self.music_videos(),
                 share: self.share.is_some(),
                 account: self.account.is_some(),
             },
@@ -862,6 +866,12 @@ impl MusicProviderCapabilityFacade {
 
     pub fn comments(&self) -> Option<Arc<dyn CommentsProvider>> {
         self.comments.as_ref().map(Arc::clone)
+    }
+
+    pub fn music_videos(&self) -> bool {
+        self.legacy_provider
+            .as_ref()
+            .is_some_and(|provider| provider.supports_music_videos())
     }
 
     pub fn share(&self) -> Option<&dyn ShareProvider> {
@@ -1272,6 +1282,17 @@ impl ProviderRegistry {
         self.require_provider_profile(provider_id, profile_id)?
             .comments()
             .ok_or_else(|| unsupported_provider_capability("comments"))
+    }
+
+    pub fn require_music_video_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn MusicProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .legacy_provider()
+            .filter(|provider| provider.supports_music_videos())
+            .ok_or_else(|| unsupported_provider_capability("music videos"))
     }
 
     pub fn require_playback_provider_for_profile(

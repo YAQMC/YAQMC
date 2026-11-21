@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_213_method_single_source_of_truth() {
+fn registry_is_the_215_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 187 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 189 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());

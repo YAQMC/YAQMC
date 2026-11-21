@@ -515,6 +515,7 @@ impl ExtensionHost {
                                 comments: has(
                                     crate::plugin::manifest::ProviderCapability::Comments,
                                 ),
+                                music_videos: false,
                                 share: false,
                                 account: has(crate::plugin::manifest::ProviderCapability::Account),
                             },

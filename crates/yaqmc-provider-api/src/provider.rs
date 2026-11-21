@@ -250,6 +250,10 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     fn comments_provider(&self) -> Option<&dyn crate::CommentsProvider> {
         None
     }
+    /// Whether the provider implements the optional music-video playback contract.
+    fn supports_music_videos(&self) -> bool {
+        false
+    }
     fn media_http_client(&self) -> reqwest::Client;
     fn capabilities(&self) -> CatalogProviderCapabilities;
     async fn status(&self) -> ProviderStatus;

@@ -420,6 +420,9 @@ impl api::MusicProvider for QQMusicService {
     fn comments_provider(&self) -> Option<&dyn api::CommentsProvider> {
         Some(self)
     }
+    fn supports_music_videos(&self) -> bool {
+        true
+    }
     fn id(&self) -> &str {
         "qqmusic"
     }
