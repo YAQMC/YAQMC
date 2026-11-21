@@ -388,6 +388,14 @@ impl FederatedProvider {
             .into_iter()
             .map(|item| self.remap_playlist(member, item))
             .collect();
+        value.new_mvs = value
+            .new_mvs
+            .into_iter()
+            .map(|mut item| {
+                item.id = encode_id(member, &item.id);
+                item
+            })
+            .collect();
         value.featured = value
             .featured
             .into_iter()
@@ -1100,7 +1108,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use yaqmc_provider_api::{
         Album, Artist, ArtistSummary, Artwork, AudioQualityPreference, CatalogProvider,
-        LibrarySnapshot, LyricDocument, LyricMetadata, LyricSyncMode, LyricsProvider,
+        DiscoverFeed, LibrarySnapshot, LyricDocument, LyricMetadata, LyricSyncMode, LyricsProvider,
         PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
         PlaybackSourceSelection, Playlist, PlaylistOwner, ProviderResult, ProviderStatus,
         ResolvedPlaybackSource, Song,
@@ -1110,6 +1118,40 @@ mod tests {
     fn interleave_preserves_each_provider_order() {
         let result = interleave(vec![vec![1, 2, 3], vec![10, 20]], 5);
         assert_eq!(result, vec![1, 10, 2, 20, 3]);
+    }
+
+    #[test]
+    fn remaps_discover_new_mv_ids_for_member_routing() {
+        let member = FederationMember {
+            provider_id: "org.example.qqmusic".to_owned(),
+            profile_id: "work".to_owned(),
+            catalog: Arc::new(NoopCatalog::default()),
+            playback: None,
+            lyrics: None,
+            comments: None,
+        };
+        let federation = FederatedProvider::new(
+            "org.example.aggregate".to_owned(),
+            "Aggregate".to_owned(),
+            vec![member.clone()],
+        );
+        let feed: DiscoverFeed = serde_json::from_value(serde_json::json!({
+            "charts": [],
+            "newMvs": [{
+                "id": "qqmusic:mv:42",
+                "title": "Fixture MV",
+                "cover": "",
+                "durationMs": 180000,
+                "artist": "Fixture artist"
+            }]
+        }))
+        .expect("discover feed");
+
+        let mapped = federation.remap_discover(&member, feed);
+        let route = decode_id(&mapped.new_mvs[0].id).expect("MV route");
+        assert_eq!(route.provider_id, "org.example.qqmusic");
+        assert_eq!(route.profile_id, "work");
+        assert_eq!(route.track_id, "qqmusic:mv:42");
     }
 
     #[test]
