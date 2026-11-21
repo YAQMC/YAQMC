@@ -474,15 +474,14 @@ function ProviderSongPage({ id, initial }: { id: string; initial?: Song }) {
 function ProviderMvPage({ id }: { id: string }) {
   const { t } = useTranslation('pages');
   const provider = useMusicProvider();
-  const getMusicVideo = provider.getMusicVideo?.bind(provider);
   const load = useCallback(
     (entityId: string, signal: AbortSignal) => {
-      if (!getMusicVideo) {
+      if (!provider.getMusicVideo) {
         return Promise.reject(new Error('The active provider does not support music videos.'));
       }
-      return getMusicVideo(entityId, signal);
+      return provider.getMusicVideo(entityId, signal);
     },
-    [getMusicVideo],
+    [provider],
   );
   const resource = useEntityDetail<MusicVideo>(id, load);
 

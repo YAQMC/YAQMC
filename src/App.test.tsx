@@ -17,7 +17,7 @@ import {
   useLyricsPresentationStore,
   type FullscreenPort,
 } from './application/lyrics-presentation';
-import type { AccountPlaylistDetail, AccountSnapshot } from './domain/music';
+import type { AccountPlaylistDetail, AccountSnapshot, MusicVideo } from './domain/music';
 import type { AccountMusicProvider, MusicProvider } from './providers/music-provider';
 import { fakeMusicProvider } from './providers/fake/fake-music-provider';
 import { MusicProviderRegistry } from './providers/provider-registry';
@@ -100,6 +100,9 @@ vi.mock('./components/Sidebar', () => ({
       </button>
       <button type="button" onClick={() => onNavigate({ page: 'song', id: 'quiet-light' })}>
         Navigate to song
+      </button>
+      <button type="button" onClick={() => onNavigate({ page: 'mv', id: 'night-flight' })}>
+        Navigate to MV
       </button>
       <button
         type="button"
@@ -312,6 +315,32 @@ describe('App TopBar history navigation', () => {
       expect(screen.queryByText('Home unavailable')).not.toBeInTheDocument();
     },
   );
+  it('loads a music video once and renders it without a rerender loop', async () => {
+    const video: MusicVideo = {
+      id: 'night-flight',
+      title: 'Night Flight',
+      artist: 'Mira Vale',
+      artwork: { src: '/cover.jpg', alt: 'Night Flight', dominantColor: '#123456' },
+      durationMs: 245_000,
+      description: 'A live performance filmed after sunset.',
+      playCount: 12_345,
+      streamUrl: 'http://127.0.0.1:49152/mv/opaque-token',
+    };
+    const getMusicVideo = vi.fn().mockResolvedValue(video);
+    const provider = Object.assign(Object.create(fakeMusicProvider) as MusicProvider, {
+      getMusicVideo,
+    });
+    renderApp(provider);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to MV' }));
+
+    expect(await screen.findByRole('heading', { name: 'Night Flight' })).toBeVisible();
+    await waitFor(() => expect(getMusicVideo).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(getMusicVideo).toHaveBeenCalledTimes(1);
+    expect(getMusicVideo).toHaveBeenCalledWith('night-flight', expect.any(AbortSignal));
+  });
+
   it('keeps the original page inert through entrance and exit, restoring it on close', () => {
     renderApp();
     const shell = document.querySelector('.app-shell');
