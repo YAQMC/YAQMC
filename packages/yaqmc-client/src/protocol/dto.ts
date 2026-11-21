@@ -750,6 +750,7 @@ export interface ProviderStatus {
 
 export interface ProviderCapabilitySummary {
   comments?: boolean;
+  musicVideos?: boolean;
   catalog: boolean;
   playback: boolean;
   recommendations: boolean;

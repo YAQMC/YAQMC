@@ -26,6 +26,7 @@ function descriptor(
       playback: false,
       recommendations: false,
       lyrics: false,
+      musicVideos: false,
       share: false,
       account: false,
       ...capabilities,
@@ -109,6 +110,19 @@ describe('NativeMusicProvider', () => {
       providerId: 'plugin.example',
       profileId: 'work',
       requestId,
+    });
+  });
+  it('exposes declared music videos and sends playback through the scoped native command', async () => {
+    const catalogOnly = createNativeMusicProvider(descriptor(), 'work');
+    expect(catalogOnly.getMusicVideo).toBeUndefined();
+
+    const provider = createNativeMusicProvider(descriptor({ musicVideos: true }), 'work');
+    expect(provider.getMusicVideo).toBeTypeOf('function');
+    await provider.getMusicVideo!('qqmusic:mv:fixture');
+    expect(invoke).toHaveBeenCalledWith('provider_mv', {
+      providerId: 'plugin.example',
+      profileId: 'work',
+      id: 'qqmusic:mv:fixture',
     });
   });
   it('exposes declared comments and preserves provider/profile, cursor and parent', async () => {

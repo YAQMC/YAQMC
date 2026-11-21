@@ -123,6 +123,7 @@ export const MIGRATED_METHOD_NAMES = [
   'provider_search',
   'provider_search_cancel',
   'provider_song',
+  'provider_mv',
   'provider_album',
   'provider_artist',
   'provider_artist_catalog',
@@ -367,6 +368,7 @@ export type MethodParams = Exhaustive<{
   };
   provider_search_cancel: { providerId: string; profileId?: string; requestId: string };
   provider_song: { providerId: string; profileId?: string; id: string };
+  provider_mv: { providerId: string; profileId?: string; id: string };
   provider_album: { providerId: string; profileId?: string; id: string };
   provider_artist: { providerId: string; profileId?: string; id: string };
   provider_artist_catalog: {
@@ -710,6 +712,7 @@ export type MethodResult = Exhaustive<{
   provider_search: SearchResult;
   provider_search_cancel: void;
   provider_song: Song;
+  provider_mv: MusicVideo;
   provider_album: Album;
   provider_artist: Artist;
   provider_artist_catalog: ArtistCatalogPage;

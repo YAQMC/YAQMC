@@ -22,6 +22,7 @@ import type {
   HomeFeed,
   LibrarySnapshot,
   LyricDocument,
+  MusicVideo,
   Page,
   Playlist,
   PlaylistMutationResult,
@@ -42,6 +43,7 @@ export class NativeMusicProvider implements MusicProvider {
   readonly profileId: string;
   readonly displayName: string;
   readonly getComments?: MusicProvider['getComments'];
+  readonly getMusicVideo?: MusicProvider['getMusicVideo'];
 
   constructor(
     readonly descriptor: ProviderDescriptor,
@@ -53,6 +55,10 @@ export class NativeMusicProvider implements MusicProvider {
     if (descriptor.capabilities.comments) {
       this.getComments = (request, signal) =>
         this.request('provider_comments', { request }, signal);
+    }
+    if (descriptor.capabilities.musicVideos) {
+      this.getMusicVideo = (id, signal): Promise<MusicVideo> =>
+        this.request('provider_mv', { id }, signal);
     }
   }
 
