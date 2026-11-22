@@ -25,9 +25,9 @@ YAQMC 不渲染密码框、不读取腾讯页面中输入的凭据、不导入�
 
 ## 公开与账号能力
 
-当前规范化能力包括基于 pinned `qm-api-rs` `search_by_type` 的歌曲/歌手/专辑分类搜索、song/album/singer
-typed 详情，以及通过 `singer.get_songs_list/get_album_list` 获取的歌手歌曲和专辑分页。React 与 Electron
-层不拼接上游 API 路由。其余公开能力包括访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、封面
+当前规范化能力包括基于 pinned `qm-api-rs` `search_by_type` 的歌曲/歌手/专辑/歌单/MV 分类搜索、song/album/singer
+typed 详情，以及通过 `singer.get_songs_list/get_album_list/get_mv_list` 获取的歌手歌曲、专辑和 MV 分页。
+React 与 Electron 层不拼接上游 API 路由。其余公开能力包括访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、封面
 缓存；账号扩展包括 OAuth、资料、收藏、自建/收藏歌单、条件性最近播放、权益和播放 vkey。
 
 搜索在有当前 profile 会话时使用该会话快照作为 CGI 身份，否则回退访客身份；搜索结果缓存仍是公开目录

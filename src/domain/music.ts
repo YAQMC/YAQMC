@@ -158,7 +158,7 @@ export interface Artist {
   albums: AlbumPreview[];
 }
 
-export type ArtistCatalogKind = 'song' | 'album';
+export type ArtistCatalogKind = 'song' | 'album' | 'mv';
 
 export type ArtistCatalogPage =
   | {
@@ -174,6 +174,13 @@ export type ArtistCatalogPage =
       page: number;
       hasMore: boolean;
       items: AlbumPreview[];
+    }
+  | {
+      kind: 'mv';
+      artistId: EntityId;
+      page: number;
+      hasMore: boolean;
+      items: MvPreview[];
     };
 
 export interface PlaylistOwner {

@@ -262,6 +262,42 @@ mod catalog_shape_tests {
     }
 
     #[test]
+    fn artist_mv_catalog_page_serializes_playable_previews() {
+        let page = ArtistCatalogPage::Mv {
+            artist_id: "qqmusic:artist:mid".to_owned(),
+            page: 1,
+            has_more: false,
+            items: vec![MvPreview {
+                id: "qqmusic:mv:vid".to_owned(),
+                title: "Live".to_owned(),
+                artist: "Artist".to_owned(),
+                artwork: artwork(),
+                duration_ms: 245_000,
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(page).expect("artist MV page serializes"),
+            json!({
+                "kind": "mv",
+                "artistId": "qqmusic:artist:mid",
+                "page": 1,
+                "hasMore": false,
+                "items": [{
+                    "id": "qqmusic:mv:vid",
+                    "title": "Live",
+                    "artist": "Artist",
+                    "artwork": {
+                        "src": "/artwork/test.svg",
+                        "alt": "Test artwork",
+                        "dominantColor": "#000000"
+                    },
+                    "durationMs": 245000
+                }]
+            })
+        );
+    }
+
+    #[test]
     fn account_login_flow_uses_the_frozen_oauth_wire_value() {
         assert_eq!(
             serde_json::to_value(AccountLoginFlow::OAuth).expect("login flow serializes"),
@@ -487,6 +523,7 @@ pub enum SearchResult {
 pub enum ArtistCatalogKind {
     Song,
     Album,
+    Mv,
 }
 
 impl ArtistCatalogKind {
@@ -494,6 +531,7 @@ impl ArtistCatalogKind {
         match self {
             Self::Song => "song",
             Self::Album => "album",
+            Self::Mv => "mv",
         }
     }
 }
@@ -516,6 +554,14 @@ pub enum ArtistCatalogPage {
         #[serde(rename = "hasMore")]
         has_more: bool,
         items: Vec<AlbumPreview>,
+    },
+    Mv {
+        #[serde(rename = "artistId")]
+        artist_id: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<MvPreview>,
     },
 }
 

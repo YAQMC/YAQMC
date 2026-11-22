@@ -37,6 +37,10 @@ pub(crate) enum ArtistCatalogPage {
         total: i64,
         items: Vec<qqmusic_api::models::singer::AlbumBrief>,
     },
+    Mvs {
+        total: i64,
+        items: Vec<qqmusic_api::models::singer::VideoBrief>,
+    },
 }
 
 pub(crate) use qqmusic_api::models::search::{
@@ -150,6 +154,9 @@ pub(crate) async fn artist_catalog_page(
 ) -> Result<ArtistCatalogPage, QQMusicError> {
     let number = i64::from(limit);
     let page = i64::from(page);
+    if number <= 0 || page <= 0 {
+        return Err(QQMusicError::InvalidRequest);
+    }
     match kind {
         ArtistCatalogKind::Song => {
             let response = client
@@ -173,6 +180,24 @@ pub(crate) async fn artist_catalog_page(
             Ok(ArtistCatalogPage::Albums {
                 total: response.total,
                 items: response.album_list,
+            })
+        }
+        ArtistCatalogKind::Mv => {
+            let response = client
+                .singer
+                .get_mv_list(mid, number, page)
+                .await
+                .map_err(map_qmapi_error)?;
+            if response.total < 0
+                || (response.total > 0
+                    && page <= response.total.saturating_add(number - 1) / number
+                    && response.mv_list.is_empty())
+            {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            Ok(ArtistCatalogPage::Mvs {
+                total: response.total,
+                items: response.mv_list,
             })
         }
     }
@@ -382,6 +407,18 @@ mod tests {
                         ));
                         &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..]
                     }
+                    ("MvService.MvInfoProServer", "GetSingerMvList") => {
+                        assert_eq!(req["param"]["singermid"], "ARTIST_MID");
+                        assert_eq!(req["param"]["order"], 1);
+                        assert!(matches!(
+                            (
+                                req["param"]["count"].as_i64(),
+                                req["param"]["start"].as_i64()
+                            ),
+                            (Some(20), Some(0)) | (Some(8), Some(8))
+                        ));
+                        &br#"{"code":0,"req_0":{"code":0,"data":{"total":1,"list":[{"mvid":9001,"vid":"ARTIST_MV_VID","name":"Artist MV","picurl":"https://y.gtimg.cn/artist-mv.jpg","duration":245}]}}}"#[..]
+                    }
                     ("music.srfDissInfo.DissInfo", "CgiGetDiss") => {
                         assert_eq!(req["param"]["disstid"], SYNTHETIC_SONGLIST_ID);
                         assert_eq!(req["param"]["song_num"], super::SONGLIST_TRACK_PAGE_SIZE);
@@ -442,6 +479,16 @@ mod tests {
             albums,
             super::ArtistCatalogPage::Albums { total: 1, items } if items.len() == 1
         ));
+        let mvs = super::artist_catalog_page(&client, "ARTIST_MID", ArtistCatalogKind::Mv, 2, 8)
+            .await
+            .expect("artist MV page");
+        assert!(matches!(
+            mvs,
+            super::ArtistCatalogPage::Mvs { total: 1, items }
+                if items.len() == 1
+                    && items[0].base.vid == "ARTIST_MV_VID"
+                    && items[0].duration == 245
+        ));
         let daily = super::songlist(&client, SYNTHETIC_SONGLIST_ID)
             .await
             .expect("daily songlist");
@@ -450,10 +497,10 @@ mod tests {
         assert_eq!(daily.songs.len(), 2);
 
         let calls = transport.calls();
-        assert_eq!(calls, (0..14).collect::<Vec<_>>());
+        assert_eq!(calls, (0..15).collect::<Vec<_>>());
 
         let requests = transport.requests();
-        assert_eq!(requests.len(), 14);
+        assert_eq!(requests.len(), 15);
         assert_eq!(requests[0]["req_0"]["module"], "music.pf_song_detail_svr");
         assert_eq!(requests[0]["req_0"]["method"], "get_song_detail_yqq");
         assert_eq!(requests[0]["req_0"]["param"]["song_mid"], "SONG_MID");
@@ -510,16 +557,21 @@ mod tests {
         assert_eq!(requests[11]["req_0"]["method"], "GetAlbumList");
         assert_eq!(requests[11]["req_0"]["param"]["number"], 8);
         assert_eq!(requests[11]["req_0"]["param"]["begin"], 8);
+        assert_eq!(requests[12]["req_0"]["module"], "MvService.MvInfoProServer");
+        assert_eq!(requests[12]["req_0"]["method"], "GetSingerMvList");
+        assert_eq!(requests[12]["req_0"]["param"]["singermid"], "ARTIST_MID");
+        assert_eq!(requests[12]["req_0"]["param"]["count"], 8);
+        assert_eq!(requests[12]["req_0"]["param"]["start"], 8);
         assert_eq!(
-            requests[12]["req_0"]["module"],
+            requests[13]["req_0"]["module"],
             "music.srfDissInfo.DissInfo"
         );
-        assert_eq!(requests[12]["req_0"]["method"], "CgiGetDiss");
+        assert_eq!(requests[13]["req_0"]["method"], "CgiGetDiss");
         assert_eq!(
-            requests[12]["req_0"]["param"]["song_num"],
+            requests[13]["req_0"]["param"]["song_num"],
             super::SONGLIST_TRACK_PAGE_SIZE
         );
-        assert_eq!(requests[12]["req_0"]["param"]["song_begin"], 0);
-        assert_eq!(requests[13]["req_0"]["param"]["song_begin"], 100);
+        assert_eq!(requests[13]["req_0"]["param"]["song_begin"], 0);
+        assert_eq!(requests[14]["req_0"]["param"]["song_begin"], 100);
     }
 }

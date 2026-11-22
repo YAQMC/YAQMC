@@ -3737,6 +3737,37 @@ fn normalize_qm_artist_album_preview(
     })
 }
 
+fn normalize_qm_artist_mv_preview(
+    raw: qqmusic_api::models::singer::VideoBrief,
+) -> Option<MvPreview> {
+    let title = clean_text(if raw.base.name.trim().is_empty() {
+        &raw.base.title
+    } else {
+        &raw.base.name
+    });
+    if title.is_empty() {
+        return None;
+    }
+    let media_id = non_empty(raw.base.vid).or_else(|| {
+        (raw.base.id > 0)
+            .then(|| raw.base.id.to_string())
+            .and_then(non_empty)
+    })?;
+    Some(MvPreview {
+        id: music_video_id(&media_id),
+        title: title.clone(),
+        artist: String::new(),
+        artwork: artwork_from_provider_url(
+            &raw.picurl,
+            &title,
+            color_for(&format!("{media_id}:artist-mv")),
+        ),
+        duration_ms: u64::try_from(raw.duration)
+            .unwrap_or_default()
+            .saturating_mul(1_000),
+    })
+}
+
 fn normalize_qm_artist_catalog_page(
     mid: &str,
     page: u32,
@@ -3794,6 +3825,16 @@ fn normalize_qm_artist_catalog_page(
                     .collect(),
             }
         }
+        crate::qmapi::catalog::ArtistCatalogPage::Mvs { total, items } => ArtistCatalogPage::Mv {
+            artist_id,
+            page,
+            has_more: search_has_more(total, page, limit),
+            items: items
+                .into_iter()
+                .take(limit as usize)
+                .filter_map(normalize_qm_artist_mv_preview)
+                .collect(),
+        },
     }
 }
 
@@ -4635,7 +4676,7 @@ fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32)
 
 fn artist_catalog_cache_key(mid: &str, kind: ArtistCatalogKind, page: u32, limit: u32) -> String {
     format!(
-        "qqmusic:artist-catalog:v2:{}:{mid}:{page}:{limit}",
+        "qqmusic:artist-catalog:v3:{}:{mid}:{page}:{limit}",
         kind.as_str()
     )
 }
@@ -4666,6 +4707,14 @@ fn artist_catalog_result_matches(
                 ..
             },
             ArtistCatalogKind::Album,
+        )
+        | (
+            ArtistCatalogPage::Mv {
+                artist_id: cached_id,
+                page: cached_page,
+                ..
+            },
+            ArtistCatalogKind::Mv,
         ) => cached_id == artist_id && *cached_page == page,
         _ => false,
     }
@@ -4674,7 +4723,7 @@ fn artist_catalog_result_matches(
 fn artist_catalog_result_songs(result: &ArtistCatalogPage) -> &[Song] {
     match result {
         ArtistCatalogPage::Song { items, .. } => items,
-        ArtistCatalogPage::Album { .. } => &[],
+        ArtistCatalogPage::Album { .. } | ArtistCatalogPage::Mv { .. } => &[],
     }
 }
 
@@ -5969,7 +6018,7 @@ mod tests {
     #[test]
     fn artist_catalog_cache_and_validation_are_scoped_to_the_exact_page() {
         let song_key = artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Song, 2, 8);
-        assert_eq!(song_key, "qqmusic:artist-catalog:v2:song:ARTIST_MID:2:8");
+        assert_eq!(song_key, "qqmusic:artist-catalog:v3:song:ARTIST_MID:2:8");
         assert_eq!(
             artist_cache_key("ARTIST_MID"),
             "qqmusic:artist:v2:ARTIST_MID"
@@ -5977,6 +6026,10 @@ mod tests {
         assert_ne!(
             song_key,
             artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Album, 2, 8)
+        );
+        assert_ne!(
+            song_key,
+            artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Mv, 2, 8)
         );
         assert_ne!(
             song_key,
@@ -6007,6 +6060,46 @@ mod tests {
             ArtistCatalogKind::Album,
             2
         ));
+
+        let mv_page = ArtistCatalogPage::Mv {
+            artist_id: "qqmusic:artist:ARTIST_MID".to_owned(),
+            page: 2,
+            has_more: false,
+            items: Vec::new(),
+        };
+        assert!(artist_catalog_result_matches(
+            &mv_page,
+            "qqmusic:artist:ARTIST_MID",
+            ArtistCatalogKind::Mv,
+            2
+        ));
+        assert!(!artist_catalog_result_matches(
+            &mv_page,
+            "qqmusic:artist:ARTIST_MID",
+            ArtistCatalogKind::Album,
+            2
+        ));
+    }
+
+    #[test]
+    fn artist_mv_preview_uses_the_playable_identifier_and_second_duration() {
+        let preview = normalize_qm_artist_mv_preview(qqmusic_api::models::singer::VideoBrief {
+            base: qqmusic_api::models::base::MV {
+                id: 9,
+                vid: "ARTIST_MV_VID".to_owned(),
+                name: "Artist live video".to_owned(),
+                ..Default::default()
+            },
+            picurl: "https://y.gtimg.cn/artist-mv.jpg".to_owned(),
+            duration: 245,
+            ..Default::default()
+        })
+        .expect("artist MV normalizes");
+
+        assert_eq!(preview.id, "qqmusic:mv:ARTIST_MV_VID");
+        assert_eq!(preview.title, "Artist live video");
+        assert_eq!(preview.duration_ms, 245_000);
+        assert!(preview.artwork.src.contains("artist-mv.jpg"));
     }
 
     #[test]

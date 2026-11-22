@@ -47,6 +47,34 @@ describe('ArtistPage', () => {
     expect(getArtistCatalog).not.toHaveBeenCalled();
   });
 
+  it('loads and opens artist music videos when the provider supports playback', async () => {
+    const provider = new FakeMusicProvider();
+    Object.defineProperty(provider, 'getMusicVideo', { value: vi.fn() });
+    const artist = await provider.getArtist('artist-mira-vale');
+    const video = {
+      id: 'qqmusic:mv:artist-video',
+      title: 'Artist live video',
+      artist: artist.name,
+      artwork: { src: '/artist-video.jpg', alt: 'Artist live video', dominantColor: '#123456' },
+      durationMs: 245_000,
+    };
+    const getArtistCatalog = vi.spyOn(provider, 'getArtistCatalog').mockResolvedValue({
+      kind: 'mv',
+      artistId: artist.id,
+      page: 1,
+      hasMore: false,
+      items: [video],
+    });
+    const { onNavigate } = renderArtist(provider, artist);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Music videos' }));
+
+    expect(await screen.findByText('Artist live video')).toBeVisible();
+    expect(getArtistCatalog).toHaveBeenCalledWith(artist.id, 'mv', expect.any(AbortSignal), 1, 20);
+    fireEvent.click(screen.getByRole('button', { name: 'Open music video Artist live video' }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'mv', id: video.id });
+  });
+
   it('omits an empty optional description', async () => {
     const provider = new FakeMusicProvider();
     const artist = await provider.getArtist('artist-mira-vale');
@@ -237,7 +265,11 @@ describe('ArtistPage', () => {
       (artistId, kind, _signal, page = 1) =>
         kind === 'song'
           ? songs.promise
-          : Promise.resolve({ kind, artistId, page, hasMore: false, items: [album] }),
+          : Promise.resolve(
+              kind === 'album'
+                ? { kind, artistId, page, hasMore: false, items: [album] }
+                : { kind, artistId, page, hasMore: false, items: [] },
+            ),
     );
     renderArtist(provider, artist);
 
@@ -267,6 +299,9 @@ describe('ArtistPage', () => {
     vi.spyOn(provider, 'getArtistCatalog').mockImplementation(
       (artistId, kind, _signal, page = 1) => {
         if (kind === 'song' && page === 2) return nextPage.promise;
+        if (kind === 'mv') {
+          return Promise.resolve({ kind, artistId, page, hasMore: false, items: [] });
+        }
         return Promise.resolve(
           kind === 'song'
             ? { kind, artistId, page, hasMore: true, items: [first] }

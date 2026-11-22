@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AlbumPreview, ArtistCatalogKind, ArtistCatalogPage, Song } from '../domain/music';
+import type {
+  AlbumPreview,
+  ArtistCatalogKind,
+  ArtistCatalogPage,
+  MvPreview,
+  Song,
+} from '../domain/music';
 import type { MusicProvider } from '../providers/music-provider';
+
+type ArtistCatalogItem = Song | AlbumPreview | MvPreview;
 
 export type ArtistCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface ArtistCatalogCategoryState {
   status: ArtistCatalogStatus;
-  items: Array<Song | AlbumPreview>;
+  items: ArtistCatalogItem[];
   page: number;
   hasMore: boolean;
   error: unknown | null;
@@ -64,7 +72,7 @@ function emptyCategory(): ArtistCatalogCategoryState {
 }
 
 function emptyCategories(): Record<ArtistCatalogKind, ArtistCatalogCategoryState> {
-  return { song: emptyCategory(), album: emptyCategory() };
+  return { song: emptyCategory(), album: emptyCategory(), mv: emptyCategory() };
 }
 
 function initialState(artistId: string, provider: MusicProvider): ArtistCatalogState {
@@ -76,7 +84,7 @@ function initialState(artistId: string, provider: MusicProvider): ArtistCatalogS
   };
 }
 
-function uniqueById(items: Array<Song | AlbumPreview>): Array<Song | AlbumPreview> {
+function uniqueById(items: ArtistCatalogItem[]): ArtistCatalogItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     const id = item.id.trim();
@@ -88,9 +96,14 @@ function uniqueById(items: Array<Song | AlbumPreview>): Array<Song | AlbumPrevie
 }
 
 function deduplicateResult(result: ArtistCatalogPage): ArtistCatalogPage {
-  return result.kind === 'song'
-    ? { ...result, items: uniqueById(result.items) as Song[] }
-    : { ...result, items: uniqueById(result.items) as AlbumPreview[] };
+  switch (result.kind) {
+    case 'song':
+      return { ...result, items: uniqueById(result.items) as Song[] };
+    case 'album':
+      return { ...result, items: uniqueById(result.items) as AlbumPreview[] };
+    case 'mv':
+      return { ...result, items: uniqueById(result.items) as MvPreview[] };
+  }
 }
 
 function resultMatches(

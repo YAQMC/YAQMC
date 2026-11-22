@@ -458,6 +458,20 @@ impl FederatedProvider {
                     .map(|album| self.remap_album_preview(member, album))
                     .collect(),
             },
+            ArtistCatalogPage::Mv {
+                artist_id,
+                page,
+                has_more,
+                items,
+            } => ArtistCatalogPage::Mv {
+                artist_id: encode_id(member, &artist_id),
+                page,
+                has_more,
+                items: items
+                    .into_iter()
+                    .map(|mv| self.remap_mv_preview(member, mv))
+                    .collect(),
+            },
         }
     }
 
@@ -1107,11 +1121,11 @@ mod tests {
     };
     use std::sync::{Arc, Mutex};
     use yaqmc_provider_api::{
-        Album, Artist, ArtistSummary, Artwork, AudioQualityPreference, CatalogProvider,
-        DiscoverFeed, LibrarySnapshot, LyricDocument, LyricMetadata, LyricSyncMode, LyricsProvider,
-        PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
-        PlaybackSourceSelection, Playlist, PlaylistOwner, ProviderResult, ProviderStatus,
-        ResolvedPlaybackSource, Song,
+        Album, Artist, ArtistCatalogPage, ArtistSummary, Artwork, AudioQualityPreference,
+        CatalogProvider, DiscoverFeed, LibrarySnapshot, LyricDocument, LyricMetadata,
+        LyricSyncMode, LyricsProvider, MvPreview, PlaybackSourceError, PlaybackSourceProvider,
+        PlaybackSourceResolver, PlaybackSourceSelection, Playlist, PlaylistOwner, ProviderResult,
+        ProviderStatus, ResolvedPlaybackSource, Song,
     };
 
     #[test]
@@ -1152,6 +1166,51 @@ mod tests {
         assert_eq!(route.provider_id, "org.example.qqmusic");
         assert_eq!(route.profile_id, "work");
         assert_eq!(route.track_id, "qqmusic:mv:42");
+    }
+
+    #[test]
+    fn remaps_artist_mv_catalog_ids_for_member_routing() {
+        let member = FederationMember {
+            provider_id: "org.example.qqmusic".to_owned(),
+            profile_id: "work".to_owned(),
+            catalog: Arc::new(NoopCatalog::default()),
+            playback: None,
+            lyrics: None,
+            comments: None,
+        };
+        let federation = FederatedProvider::new(
+            "org.example.aggregate".to_owned(),
+            "Aggregate".to_owned(),
+            vec![member.clone()],
+        );
+        let page = ArtistCatalogPage::Mv {
+            artist_id: "qqmusic:artist:99".to_owned(),
+            page: 1,
+            has_more: false,
+            items: vec![MvPreview {
+                id: "qqmusic:mv:42".to_owned(),
+                title: "Fixture MV".to_owned(),
+                artist: "Fixture artist".to_owned(),
+                artwork: Artwork {
+                    src: String::new(),
+                    alt: "Fixture MV".to_owned(),
+                    dominant_color: "#000000".to_owned(),
+                    variants: Vec::new(),
+                },
+                duration_ms: 180_000,
+            }],
+        };
+
+        let ArtistCatalogPage::Mv {
+            artist_id, items, ..
+        } = federation.remap_artist_page(&member, page)
+        else {
+            panic!("expected an MV catalog page");
+        };
+        let artist_route = decode_id(&artist_id).expect("artist route");
+        let mv_route = decode_id(&items[0].id).expect("MV route");
+        assert_eq!(artist_route.track_id, "qqmusic:artist:99");
+        assert_eq!(mv_route.track_id, "qqmusic:mv:42");
     }
 
     #[test]

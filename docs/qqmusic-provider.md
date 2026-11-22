@@ -40,22 +40,22 @@ account acceptance remains pending.
 
 ## Current endpoint map
 
-| Capability            | Compatibility surface                                     | Normalized result              |
-| --------------------- | --------------------------------------------------------- | ------------------------------ |
-| typed catalog search  | pinned `qm-api-rs` `search.search_by_type`                | paginated songs/artists/albums |
-| typed catalog details | pinned `qm-api-rs` song/album/singer methods              | song/album/artist details      |
-| artist catalog pages  | pinned `qm-api-rs` `singer.get_songs_list/get_album_list` | paginated songs/albums         |
-| guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg` | playlist and tracks            |
-| current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks       |
-| QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`     |
-| LRC fallback          | `c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg`       | line/plain lyrics              |
-| clear playback source | `musicu.fcg` vkey response                                | allowlisted HTTPS media URL    |
-| encrypted source      | `musics.fcg`, `GetEVkey/CgiGetEVkey`                      | URL + in-memory ekey           |
-| artwork               | `y.gtimg.cn` / `qpic.y.qq.com`                            | cached data URI                |
+| Capability            | Compatibility surface                                                 | Normalized result           |
+| --------------------- | --------------------------------------------------------------------- | --------------------------- |
+| typed catalog search  | pinned `qm-api-rs` `search.search_by_type`                            | paginated catalog results   |
+| typed catalog details | pinned `qm-api-rs` song/album/singer methods                          | song/album/artist details   |
+| artist catalog pages  | pinned `qm-api-rs` `singer.get_songs_list/get_album_list/get_mv_list` | paginated songs/albums/MVs  |
+| guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg`             | playlist and tracks         |
+| current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                                       | home feed/toplist tracks    |
+| QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                                      | word-timed `LyricDocument`  |
+| LRC fallback          | `c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg`                   | line/plain lyrics           |
+| clear playback source | `musicu.fcg` vkey response                                            | allowlisted HTTPS media URL |
+| encrypted source      | `musics.fcg`, `GetEVkey/CgiGetEVkey`                                  | URL + in-memory ekey        |
+| artwork               | `y.gtimg.cn` / `qpic.y.qq.com`                                        | cached data URI             |
 
-Search is category-tagged (`song`, `artist`, or `album`) and uses the pinned `qm-api-rs` typed boundary. Playlist
-discovery is supplied through the home/toplist and direct playlist lookup paths; playlist results are not part of the
-search contract. Artist pages request their full song and album sections through the pinned typed singer methods;
+Search is category-tagged (`song`, `artist`, `album`, `playlist`, or `mv`) and uses the pinned `qm-api-rs` typed
+boundary. Playlist search uses the typed songlist search, while playlist detail is supplied through the direct
+playlist lookup path. Artist pages request their full song, album and MV sections through the pinned typed singer methods;
 the React and Electron layers do not construct upstream API routes. Search snapshots the active profile's session
 for its CGI identity when one is available and falls back to the guest identity otherwise; its result cache remains
 public catalog data. A business-code rate limit is retried once after a bounded delay, while input cancellation

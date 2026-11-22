@@ -1,4 +1,4 @@
-import { Disc3, ListMusic } from 'lucide-react';
+import { Clapperboard, Disc3, ListMusic } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMusicProvider } from '../application/provider-context';
@@ -9,16 +9,17 @@ import {
 import { EntityLink } from '../components/EntityLink';
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
-import type { AlbumPreview, Artist, ArtistCatalogKind, Song } from '../domain/music';
+import type { AlbumPreview, Artist, ArtistCatalogKind, MvPreview, Song } from '../domain/music';
 
 type ArtistSection = 'top' | ArtistCatalogKind;
 
-const tabOrder: ArtistSection[] = ['top', 'song', 'album'];
+const baseTabOrder: ArtistSection[] = ['top', 'song', 'album'];
 
 export function ArtistPage({ artist }: { artist: Artist }) {
   const { t } = useTranslation('pages', { keyPrefix: 'artist' });
   const { t: errors } = useTranslation('errors');
   const provider = useMusicProvider();
+  const tabOrder = provider.getMusicVideo ? [...baseTabOrder, 'mv' as const] : baseTabOrder;
   const [selection, setSelection] = useState<{ artistId: string; section: ArtistSection }>({
     artistId: artist.id,
     section: 'top',
@@ -149,6 +150,28 @@ export function ArtistPage({ artist }: { artist: Artist }) {
           onLoadMore={catalog.loadMore}
         />
       </section>
+
+      {provider.getMusicVideo && (
+        <section
+          id="artist-tabpanel-mv"
+          className="artist-page__tabpanel artist-page__albums"
+          role="tabpanel"
+          aria-labelledby="artist-tab-mv"
+          aria-busy={isBusy(catalog.categories.mv)}
+          hidden={activeSection !== 'mv'}
+          tabIndex={0}
+        >
+          <h2>{t('allMvs')}</h2>
+          <ArtistCatalogContent
+            kind="mv"
+            category={catalog.categories.mv}
+            errorMessage={(error) => artistCatalogErrorMessage(error, errors)}
+            onRetry={catalog.retry}
+            onRetryLoadMore={catalog.retryLoadMore}
+            onLoadMore={catalog.loadMore}
+          />
+        </section>
+      )}
     </div>
   );
 }
@@ -169,7 +192,7 @@ function ArtistCatalogContent({
   onLoadMore: () => Promise<void>;
 }) {
   const { t } = useTranslation('pages', { keyPrefix: 'artist' });
-  const label = kind === 'song' ? t('allSongs') : t('allAlbums');
+  const label = kind === 'song' ? t('allSongs') : kind === 'album' ? t('allAlbums') : t('allMvs');
 
   if (category.status === 'idle' || category.status === 'loading') {
     return <ArtistEmptyState label={t('loading', { category: label })} icon={kind} status />;
@@ -177,7 +200,7 @@ function ArtistCatalogContent({
   if (category.status === 'error') {
     return (
       <div className="empty-state empty-state--error artist-page__empty" role="alert">
-        <span>{kind === 'song' ? <ListMusic size={24} /> : <Disc3 size={24} />}</span>
+        <span>{catalogIcon(kind)}</span>
         <h3>{t('unavailable', { category: label })}</h3>
         <p>{errorMessage(category.error)}</p>
         <button type="button" className="button button--secondary" onClick={() => void onRetry()}>
@@ -188,7 +211,12 @@ function ArtistCatalogContent({
   }
   if (category.items.length === 0 && !category.hasMore) {
     return (
-      <ArtistEmptyState label={kind === 'song' ? t('emptySongs') : t('emptyAlbums')} icon={kind} />
+      <ArtistEmptyState
+        label={
+          kind === 'song' ? t('emptySongs') : kind === 'album' ? t('emptyAlbums') : t('emptyMvs')
+        }
+        icon={kind}
+      />
     );
   }
 
@@ -196,13 +224,17 @@ function ArtistCatalogContent({
     <>
       {category.items.length === 0 ? (
         <ArtistEmptyState
-          label={kind === 'song' ? t('emptySongs') : t('emptyAlbums')}
+          label={
+            kind === 'song' ? t('emptySongs') : kind === 'album' ? t('emptyAlbums') : t('emptyMvs')
+          }
           icon={kind}
         />
       ) : kind === 'song' ? (
         <TrackList tracks={category.items as Song[]} showAlbum compact titleTarget="album-first" />
-      ) : (
+      ) : kind === 'album' ? (
         <ArtistAlbumGrid albums={category.items as AlbumPreview[]} />
+      ) : (
+        <ArtistMvGrid videos={category.items as MvPreview[]} />
       )}
       {category.paginationError && (
         <div className="search-results__error" role="alert">
@@ -225,6 +257,26 @@ function ArtistCatalogContent({
         </button>
       )}
     </>
+  );
+}
+
+function ArtistMvGrid({ videos }: { videos: MvPreview[] }) {
+  const { t } = useTranslation('pages', { keyPrefix: 'artist' });
+  return (
+    <div className="artist-page__album-grid">
+      {videos.map((video, index) => (
+        <EntityLink
+          key={video.id.trim() || `missing-mv:${index}`}
+          entity="mv"
+          id={video.id}
+          className="artist-page__album-card"
+          ariaLabel={t('openMv', { title: video.title })}
+        >
+          <Artwork artwork={video.artwork} loading="lazy" purpose="medium" />
+          <span>{video.title}</span>
+        </EntityLink>
+      ))}
+    </div>
   );
 }
 
@@ -262,10 +314,16 @@ function ArtistEmptyState({
       className="empty-state artist-page__empty"
       {...(status ? { role: 'status', 'aria-live': 'polite' as const } : {})}
     >
-      <span>{icon === 'song' ? <ListMusic size={24} /> : <Disc3 size={24} />}</span>
+      <span>{catalogIcon(icon)}</span>
       <h3>{label}</h3>
     </div>
   );
+}
+
+function catalogIcon(kind: ArtistCatalogKind) {
+  if (kind === 'song') return <ListMusic size={24} />;
+  if (kind === 'album') return <Disc3 size={24} />;
+  return <Clapperboard size={24} />;
 }
 
 function isBusy(category: ArtistCatalogCategoryState): boolean {
@@ -274,10 +332,12 @@ function isBusy(category: ArtistCatalogCategoryState): boolean {
 
 function sectionLabel(
   section: ArtistSection,
-  translate: (key: 'topSongs' | 'allSongs' | 'allAlbums') => string,
+  translate: (key: 'topSongs' | 'allSongs' | 'allAlbums' | 'allMvs') => string,
 ): string {
   if (section === 'top') return translate('topSongs');
-  return translate(section === 'song' ? 'allSongs' : 'allAlbums');
+  if (section === 'song') return translate('allSongs');
+  if (section === 'album') return translate('allAlbums');
+  return translate('allMvs');
 }
 
 function artistCatalogErrorMessage(
