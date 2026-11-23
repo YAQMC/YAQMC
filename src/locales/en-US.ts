@@ -406,6 +406,46 @@ export const enUS = {
     },
   },
   player: {
+    devicePlayback: {
+      sharing: 'Share playback with my other devices',
+      sharingHelp:
+        'Off by default. Enable on each YAQMC device to publish full-track playback, pauses and queue changes to QQ Music, with a report every 15 seconds while playing. Official previews are excluded.',
+      platform: 'Device profile: {{platform}}',
+      sharingError:
+        'Could not read or change playback sharing. Check the current setting before trying again.',
+      sharingStatus: {
+        'not-sent': 'Waiting for supported local playback.',
+        reported: 'Playback report request returned.',
+        unconfirmed: 'Playback report outcome is uncertain. Local playback is unaffected.',
+      },
+      title: 'Resume from another device (experimental)',
+      loginRequired: 'Sign in to QQ Music to try cross-device playback',
+      notice:
+        'Read a recent playback snapshot from another client on the same QQ Music account. Confirmation replaces this queue and reports playback to try taking over. Automatic pause on the original device is unverified.',
+      loading: 'Reading the other client’s playback snapshot…',
+      taking: 'Starting local playback and reporting state. Please wait…',
+      empty: 'No valid recent playback snapshot. Play music on the other device, then refresh.',
+      error:
+        'The operation did not complete or its outcome is uncertain. Check sign-in, network and local playback. Refresh the preview before trying again.',
+      localStarted: 'Playback started on this device.',
+      previewOnly: 'Only an official preview is available here. No listening report was sent.',
+      localNotStarted:
+        'Continued local playback could not be confirmed; no listening report was sent.',
+      reported:
+        'The listening report request returned. This does not confirm that the other device paused.',
+      notSent: 'Playback or account changed; no listening report was sent.',
+      unconfirmed:
+        'The listening report outcome is uncertain. It was not retried. Local playback can continue.',
+      remoteUnconfirmed: 'Check the other device. If it is still playing, pause it manually.',
+      updated: 'Remote snapshot updated {{time}}',
+      queue: '{{count}} tracks in queue',
+      truncated: 'Some queue entries were not loaded',
+      confirm:
+        'This replaces your queue. The snapshot has no exact position, so playback starts at the beginning of the current song. The preview expires in 30 seconds.',
+      expired: 'Preview expired. Refresh to continue.',
+      takeOver: 'Play here and try taking over',
+      refresh: 'Refresh remote preview',
+    },
     fallbackAccountRights: 'Using the best quality available to this account',
     fallbackEntitlementUnknown:
       'Premium entitlement could not be confirmed; using a confirmed source',

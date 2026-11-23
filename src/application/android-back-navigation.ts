@@ -1,6 +1,8 @@
 export type AndroidBackAction =
   'close-account-dialog' | 'close-player-surface' | 'navigate-back' | 'exit-app';
 
+export const ANDROID_MODAL_BACK_EVENT = 'yaqmc:android-modal-back';
+
 export interface AndroidBackState {
   accountDialogOpen: boolean;
   playerSurfaceOpen: boolean;

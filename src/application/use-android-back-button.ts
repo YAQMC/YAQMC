@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from 'react';
 import type { AccountMusicProvider } from '../providers/music-provider';
 import { useAccountStore } from './account-runtime';
 import { androidApp as CapacitorApp } from './android-app';
-import { androidBackAction } from './android-back-navigation';
+import { androidBackAction, ANDROID_MODAL_BACK_EVENT } from './android-back-navigation';
 import { useCommentsPanelStore } from './comments-panel-store';
 import { isAndroidRuntime } from './host-capabilities';
 import { useLyricsPresentationStore } from './lyrics-presentation';
@@ -24,6 +24,7 @@ export function useAndroidBackButton(
     let disposed = false;
     let removeListener: (() => Promise<void>) | null = null;
     void CapacitorApp.addListener('backButton', () => {
+      if (!window.dispatchEvent(new Event(ANDROID_MODAL_BACK_EVENT, { cancelable: true }))) return;
       if (useCommentsPanelStore.getState().song) {
         useCommentsPanelStore.getState().close();
         return;

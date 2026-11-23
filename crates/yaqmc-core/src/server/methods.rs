@@ -74,6 +74,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "provider_lyrics",
     "provider_comments",
     "provider_comments_cancel",
+    "provider_device_playback_preview",
+    "provider_device_playback_takeover",
+    "provider_device_playback_sharing",
     "provider_recommendation_next",
     "provider_cache_artwork",
     "provider_set_preferred_quality",
@@ -877,6 +880,28 @@ async fn invoke_core(
                 .and_then(Value::as_str)
                 .ok_or_else(|| DispatchError::InvalidParams("missing comment request ID".into()))?;
             provider(core.comment_requests.cancel(&scope, origin, id))
+        }
+        "provider_device_playback_preview" => {
+            let scope = provider_scope(core, &params)?;
+            provider(core.device_playback.preview(core, scope).await)
+        }
+        "provider_device_playback_takeover" => {
+            let scope = provider_scope(core, &params)?;
+            let TokenParams { token } = parse(&params)?;
+            provider(core.device_playback.take_over(core, scope, token).await)
+        }
+        "provider_device_playback_sharing" => {
+            let scope = provider_scope(core, &params)?;
+            let enabled = match params.get("enabled") {
+                None => None,
+                Some(Value::Bool(value)) => Some(*value),
+                _ => {
+                    return Err(DispatchError::InvalidParams(
+                        "enabled must be a boolean".into(),
+                    ))
+                }
+            };
+            provider(core.device_playback.sharing(core, scope, enabled))
         }
         "provider_recommendation_next" => {
             let ProviderNamedRequest::<yaqmc_provider_api::RecommendationRequest> {

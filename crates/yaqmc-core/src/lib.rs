@@ -4,6 +4,7 @@ pub mod app_preferences;
 pub mod audio;
 pub mod continuation;
 pub mod credentials;
+mod device_playback;
 pub mod diagnostics;
 pub mod fullscreen_watch;
 pub mod issue_reporter;
@@ -142,6 +143,7 @@ impl fmt::Display for HostCommandRequestError {
 impl Error for HostCommandRequestError {}
 
 pub struct CoreHandle {
+    pub(crate) device_playback: device_playback::DevicePlaybackService,
     pub(crate) comment_requests: server::comment_requests::CommentRequests,
     config: CoreConfig,
     host_command_publisher: HostCommandPublisher,
@@ -267,6 +269,7 @@ pub fn bootstrap(
 
     let handle = CoreHandle {
         comment_requests: Default::default(),
+        device_playback: Default::default(),
         config,
         host_command_publisher,
         shutdown_state,
@@ -278,5 +281,6 @@ pub fn bootstrap(
         handle.host_command_publisher.clone(),
         handle.subscribe_shutdown(),
     );
+    handle.device_playback.start_sharing(&handle, &runtime);
     Ok(handle)
 }

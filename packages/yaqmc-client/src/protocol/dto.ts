@@ -6,6 +6,30 @@ export const DEFAULT_PROFILE_ID = 'default';
 
 export type EntityId = string;
 
+export interface DevicePlaybackPreview {
+  token: string;
+  currentSongId: string;
+  tracks: Song[];
+  updatedAtMs: number;
+  queueTruncated: boolean;
+  expiresInMs: number;
+}
+
+export interface DevicePlaybackSharingStatus {
+  enabled: boolean;
+  platform: 'android' | 'desktop';
+  reportStatus: 'reported' | 'not-sent' | 'unconfirmed';
+  lastErrorCode: string | null;
+  lastReportedAtMs: number | null;
+}
+
+export interface DevicePlaybackResult {
+  localStarted: boolean;
+  reportStatus: 'reported' | 'not-sent' | 'unconfirmed';
+  reportErrorCode: string | null;
+  remotePauseConfirmed: boolean;
+}
+
 export interface ArtworkVariant {
   src: string;
   width: number;

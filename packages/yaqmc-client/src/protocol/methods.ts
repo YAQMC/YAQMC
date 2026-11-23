@@ -28,6 +28,9 @@ import type {
   DiagnosticsRequest,
   DiagnosticsSnapshot,
   DiscoverFeed,
+  DevicePlaybackPreview,
+  DevicePlaybackResult,
+  DevicePlaybackSharingStatus,
   ErrorRecord,
   FavoriteMutationRequest,
   FavoriteMutationResult,
@@ -131,6 +134,9 @@ export const MIGRATED_METHOD_NAMES = [
   'provider_lyrics',
   'provider_comments',
   'provider_comments_cancel',
+  'provider_device_playback_preview',
+  'provider_device_playback_takeover',
+  'provider_device_playback_sharing',
   'provider_recommendation_next',
   'provider_cache_artwork',
   'provider_set_preferred_quality',
@@ -388,6 +394,9 @@ export type MethodParams = Exhaustive<{
     requestId?: string;
   };
   provider_comments_cancel: { providerId: string; profileId?: string; requestId: string };
+  provider_device_playback_preview: { providerId: string; profileId: string };
+  provider_device_playback_sharing: { providerId: string; profileId: string; enabled?: boolean };
+  provider_device_playback_takeover: { providerId: string; profileId: string; token: string };
   provider_recommendation_next: {
     providerId: string;
     profileId?: string;
@@ -720,6 +729,9 @@ export type MethodResult = Exhaustive<{
   provider_lyrics: LyricDocument | null;
   provider_comments: SongCommentsPage;
   provider_comments_cancel: void;
+  provider_device_playback_preview: DevicePlaybackPreview | null;
+  provider_device_playback_takeover: DevicePlaybackResult;
+  provider_device_playback_sharing: DevicePlaybackSharingStatus;
   provider_recommendation_next: RecommendationBatch;
   provider_cache_artwork: string;
   provider_set_preferred_quality: ProviderStatus;

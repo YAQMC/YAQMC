@@ -215,6 +215,21 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec(
+        "provider_device_playback_preview",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_device_playback_takeover",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_device_playback_sharing",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
         "provider_recommendation_next",
         MethodOwner::Core,
         OriginClass::Main,
@@ -861,6 +876,8 @@ const fn timeout_class(name: &str) -> TimeoutClass {
         TimeoutClass::Control
     } else if const_eq(name, "plugin_install")
         || const_eq(name, "provider_search")
+        || const_eq(name, "provider_device_playback_preview")
+        || const_eq(name, "provider_device_playback_takeover")
         || const_eq(name, "plugin_install_from")
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")

@@ -35,7 +35,7 @@ const EXPECTED: &[(&str, usize, usize)] = &[
     ("qqmusic.rs", 2, 0),
     ("qqmusic/auth.rs", 0, 3),
     ("qqmusic/oauth.rs", 7, 0),
-    ("qqmusic/transport.rs", 12, 3),
+    ("qqmusic/transport.rs", 13, 3),
     ("qqmusic/transport/qmapi_bridge.rs", 0, 2),
 ];
 #[derive(Clone, Copy, PartialEq, Eq)]

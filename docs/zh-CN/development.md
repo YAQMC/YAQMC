@@ -37,6 +37,8 @@ npm run dev
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
 `1dbbf0b40e5b874ba2a20dda965cd5e57fe921d7`。
 
+原生播放器提供需显式确认的[跨设备续播实验](cross-device-playback.md)。原设备自动暂停与精确进度迁移尚未验证。
+
 桌面开发启动器为 Cargo 设置 `CARGO_NET_GIT_FETCH_WITH_CLI=true`。访问辅助脚本只核对 manifest pin
 与可选的相邻 checkout，不修改 Git 配置：
 

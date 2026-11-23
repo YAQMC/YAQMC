@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_215_method_single_source_of_truth() {
+fn registry_is_the_218_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 189 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 192 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -20,6 +20,9 @@ fn registry_is_the_215_method_single_source_of_truth() {
         "qqmusic_artist_catalog",
         "provider_comments",
         "provider_comments_cancel",
+        "provider_device_playback_preview",
+        "provider_device_playback_takeover",
+        "provider_device_playback_sharing",
         "provider_search_cancel",
         "app_cache_stats",
         "app_clear_cache",

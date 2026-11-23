@@ -35,6 +35,7 @@ mod auth;
 mod cache;
 mod clock;
 mod credential_slots;
+mod device_playback;
 mod discovery;
 mod entitlement;
 mod oauth;
@@ -403,18 +404,8 @@ pub type ProviderResult<T> = Result<T, ProviderCommandError>;
 pub struct QQMusicService {
     profile: ProviderProfileKey,
     client: QQMusicClient,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "retained for account service transport ownership")
-    )]
-    account_transport: Arc<dyn QqTransport>,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "used by the QQ account services introduced in later tasks"
-        )
-    )]
+    device_playback_client: qqmusic_api::Client,
+    device_playback_generation: std::sync::Mutex<Option<u64>>,
     clock: Arc<dyn Clock>,
     auth: Arc<QQMusicAuthService>,
     account: Arc<QQMusicAccountService>,
@@ -570,9 +561,14 @@ impl QQMusicService {
             Arc::clone(&auth),
         ));
         Ok(Self {
+            device_playback_generation: std::sync::Mutex::new(None),
+            device_playback_client: device_playback::new_client(
+                &profile,
+                &storage,
+                Arc::clone(&account_transport),
+            )?,
             profile,
             client: QQMusicClient::new()?,
-            account_transport,
             clock,
             auth,
             account,
@@ -5837,7 +5833,6 @@ mod tests {
         assert_eq!(home.featured.album.id, "qqmusic:album:fixture");
         assert_eq!(calls.load(Ordering::Acquire), 0);
         assert_eq!(service.clock.now_ms(), 4_200);
-        assert!(Arc::strong_count(&service.account_transport) >= 1);
     }
 
     #[test]

@@ -15,6 +15,7 @@ const publicDocuments = [
   'audio-quality.md',
   'authentication.md',
   'caching.md',
+  'cross-device-playback.md',
   'ci.md',
   'data-locations.md',
   'design-system.md',

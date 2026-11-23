@@ -15,6 +15,8 @@ export const LONG_TIMEOUT_MS = 120_000;
 const LONG_METHODS = new Set([
   // Local Provider components may wait for an explicit user directory choice.
   'provider_search',
+  'provider_device_playback_preview',
+  'provider_device_playback_takeover',
   'core_shutdown_prepare',
   'plugin_install',
   'plugin_install_from',

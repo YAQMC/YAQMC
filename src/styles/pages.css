@@ -2477,6 +2477,22 @@
   width: min(760px, 100%);
 }
 
+.device-playback {
+  display: grid;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+.device-playback p,
+.device-playback h3 {
+  margin: 0;
+}
+
+.device-playback [role='status'] {
+  display: grid;
+  gap: 8px;
+}
+
 .plugin-dialog h2 {
   padding-right: 40px;
   font-size: var(--text-lg);

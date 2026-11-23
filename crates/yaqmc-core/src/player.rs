@@ -739,6 +739,17 @@ impl PlayerService {
         request: PlayTracksRequest,
         source_context: &str,
     ) -> Result<PlayerSnapshot, PlayerError> {
+        self.play_tracks_if_unchanged(request, source_context, None)
+            .await
+    }
+
+    /// An explicit remote resume must not overwrite user actions while its network read was pending.
+    pub(crate) async fn play_tracks_if_unchanged(
+        &self,
+        request: PlayTracksRequest,
+        source_context: &str,
+        expected: Option<&PlayerSnapshot>,
+    ) -> Result<PlayerSnapshot, PlayerError> {
         let tracks: Vec<_> = request
             .tracks
             .into_iter()
@@ -747,13 +758,6 @@ impl PlayerService {
         if tracks.is_empty() {
             return Err(PlayerError::NoPlayableTracks);
         }
-        self.publish_transition(PlaybackTransitionReason::QueueReplaced);
-        self.publish(
-            "player.context",
-            &PlaybackContextEvent {
-                source_context: source_context.to_owned(),
-            },
-        );
         let index = request
             .start_at_id
             .as_deref()
@@ -761,6 +765,29 @@ impl PlayerService {
             .unwrap_or(0);
         {
             let mut core = self.core.write().await;
+            if expected.is_some_and(|previous| {
+                core.session_id != previous.session_id
+                    || core.current_index != previous.current_index
+                    || core.playback_state != previous.playback_state
+                    || core.playback_order != previous.playback_order
+                    || core.repeat != previous.repeat
+                    || self.seek_mailbox.current_revision() != previous.last_seek_revision
+                    || core
+                        .queue_entry_ids
+                        .iter()
+                        .ne(previous.queue_entries.iter().map(|entry| &entry.id))
+            }) {
+                return Err(PlayerError::Playback(
+                    "local playback changed during the remote read".into(),
+                ));
+            }
+            self.publish_transition(PlaybackTransitionReason::QueueReplaced);
+            self.publish(
+                "player.context",
+                &PlaybackContextEvent {
+                    source_context: source_context.to_owned(),
+                },
+            );
             core.queue = tracks;
             core.queue_entry_ids = (0..core.queue.len())
                 .map(|_| new_queue_entry_id())
@@ -2934,6 +2961,74 @@ mod tests {
             playback_capability: None,
             provider: None,
         }
+    }
+
+    #[tokio::test]
+    async fn remote_resume_does_not_replace_a_changed_local_player() {
+        let player = PlayerService::new();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("local", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .unwrap();
+        for change in 0..4 {
+            let before = player.snapshot().await;
+            match change {
+                0 => {
+                    player.add_to_queue(song("queued", 10_000)).await;
+                }
+                1 => {
+                    player.pause().await.unwrap();
+                }
+                2 => {
+                    player.seek(500).await.unwrap();
+                }
+                _ => {
+                    player
+                        .play_tracks(PlayTracksRequest {
+                            tracks: vec![song("new-choice", 10_000)],
+                            start_at_id: None,
+                            shuffle: None,
+                        })
+                        .await
+                        .unwrap();
+                }
+            }
+            let changed = player.snapshot().await;
+            let result = player
+                .play_tracks_if_unchanged(
+                    PlayTracksRequest {
+                        tracks: vec![song("remote", 10_000)],
+                        start_at_id: None,
+                        shuffle: Some(false),
+                    },
+                    "device-takeover",
+                    Some(&before),
+                )
+                .await;
+            assert!(result.is_err());
+            let after = player.snapshot().await;
+            assert_eq!(after.queue_entries, changed.queue_entries);
+            assert_eq!(after.session_id, changed.session_id);
+            assert_eq!(after.playback_state, changed.playback_state);
+        }
+        let before = player.snapshot().await;
+        player
+            .play_tracks_if_unchanged(
+                PlayTracksRequest {
+                    tracks: vec![song("remote", 10_000)],
+                    start_at_id: None,
+                    shuffle: Some(false),
+                },
+                "device-takeover",
+                Some(&before),
+            )
+            .await
+            .unwrap();
+        assert_eq!(player.snapshot().await.queue[0].id, "remote");
     }
 
     fn lyric_document() -> LyricDocument {

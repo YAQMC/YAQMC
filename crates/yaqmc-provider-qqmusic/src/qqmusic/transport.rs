@@ -24,6 +24,7 @@ const ALLOWED_HOSTS: &[&str] = &[
     "u.y.qq.com",
     "c.y.qq.com",
     "c6.y.qq.com",
+    "api.tencentmusic.com",
     "ssl.ptlogin2.qq.com",
     "ssl.ptlogin2.graph.qq.com",
     "xui.ptlogin2.qq.com",

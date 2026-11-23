@@ -39,6 +39,9 @@ The provider manifest declares the `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
 `1dbbf0b40e5b874ba2a20dda965cd5e57fe921d7`.
 
+The native player includes an opt-in [cross-device playback experiment](cross-device-playback.md).
+Remote pause and exact-position transfer remain unverified.
+
 Cargo is run with `CARGO_NET_GIT_FETCH_WITH_CLI=true` by the desktop developer
 launcher. The access helper validates the manifest pin and any sibling checkout without modifying Git config:
 

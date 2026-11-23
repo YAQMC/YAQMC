@@ -417,6 +417,27 @@ impl api::ProviderAccount for QQMusicService {
 
 #[async_trait]
 impl api::MusicProvider for QQMusicService {
+    async fn remote_playback(&self) -> api::ProviderResult<Option<api::RemotePlaybackSnapshot>> {
+        let remote = self
+            .remote_playback_snapshot()
+            .await
+            .map_err(provider_error)?;
+        remote
+            .map(|mut remote| {
+                remote.tracks = map_output_for_profile(remote.tracks, self.profile_key())?;
+                Ok(remote)
+            })
+            .transpose()
+    }
+
+    async fn report_remote_playback(
+        &self,
+        report: &api::PlaybackReport,
+    ) -> api::ProviderResult<()> {
+        self.publish_remote_playback(report)
+            .await
+            .map_err(provider_error)
+    }
     fn comments_provider(&self) -> Option<&dyn api::CommentsProvider> {
         Some(self)
     }

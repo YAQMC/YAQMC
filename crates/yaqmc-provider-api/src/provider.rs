@@ -254,6 +254,21 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     fn supports_music_videos(&self) -> bool {
         false
     }
+    async fn remote_playback(&self) -> ProviderResult<Option<crate::RemotePlaybackSnapshot>> {
+        Err(crate::ProviderCommandError {
+            code: "unsupported-operation".into(),
+            message: "remote playback is unsupported".into(),
+            retryable: false,
+        })
+    }
+    /// Publish one explicit transition. Success means a report receipt, never a remote pause.
+    async fn report_remote_playback(&self, _report: &crate::PlaybackReport) -> ProviderResult<()> {
+        Err(crate::ProviderCommandError {
+            code: "unsupported-operation".into(),
+            message: "remote playback is unsupported".into(),
+            retryable: false,
+        })
+    }
     fn media_http_client(&self) -> reqwest::Client;
     fn capabilities(&self) -> CatalogProviderCapabilities;
     async fn status(&self) -> ProviderStatus;

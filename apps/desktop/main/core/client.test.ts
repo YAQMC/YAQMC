@@ -65,6 +65,8 @@ describe('CoreClient', () => {
     expect(methodTimeoutMs('player_snapshot')).toBe(CONTROL_TIMEOUT_MS);
     expect(methodTimeoutMs('core_ping')).toBe(CONTROL_TIMEOUT_MS);
     expect(methodTimeoutMs('plugin_install')).toBe(LONG_TIMEOUT_MS);
+    expect(methodTimeoutMs('provider_device_playback_preview')).toBe(LONG_TIMEOUT_MS);
+    expect(methodTimeoutMs('provider_device_playback_takeover')).toBe(LONG_TIMEOUT_MS);
     expect(methodTimeoutMs('qqmusic_home')).toBe(STANDARD_TIMEOUT_MS);
   });
 

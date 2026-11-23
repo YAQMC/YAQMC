@@ -51,6 +51,7 @@ import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
 import { PluginSongBadges } from './PluginSongBadges';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
+import { DevicePlaybackControl } from './DevicePlaybackControl';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -453,6 +454,7 @@ export function PlayerBar({ onToggleQueue, inert }: PlayerBarProps) {
 
       <div className="player-bar__center">
         <div className="player-controls">
+          <DevicePlaybackControl />
           <PlaybackModeControl />
           <IconButton label={t('previous')} size="small" onClick={previous} disabled={!current}>
             <SkipBack size={17} fill="currentColor" />
