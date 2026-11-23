@@ -34,6 +34,8 @@ const EXPECTED: &[(&str, usize, usize)] = &[
     ("qmapi/transport.rs", 25, 2),
     ("qqmusic.rs", 2, 0),
     ("qqmusic/auth.rs", 0, 3),
+    // The snapshot decoder forwards the original SDK request to HostTransport.
+    ("qqmusic/device_playback.rs", 0, 1),
     ("qqmusic/oauth.rs", 7, 0),
     ("qqmusic/transport.rs", 13, 3),
     ("qqmusic/transport/qmapi_bridge.rs", 0, 2),
