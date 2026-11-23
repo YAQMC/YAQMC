@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.Display
 import android.view.View
 import android.webkit.WebView
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.MainThread
 import androidx.core.content.ContextCompat
@@ -35,7 +34,8 @@ class MainActivity : BridgeActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        // Let the WebView draw behind the navigation bar without the system contrast scrim.
+        WindowCompat.enableEdgeToEdge(window)
         registerPlugin(AppPlugin::class.java)
         registerPlugin(YaqmcNativePlugin::class.java)
         super.onCreate(savedInstanceState)
@@ -129,8 +129,6 @@ class MainActivity : BridgeActivity() {
      * CSS custom properties used by Capacitor instead.
      */
     private fun installFullBleedWebViewInsets() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-
         val webView = bridge?.webView ?: return
         val container = webView.parent as? View ?: return
         ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->

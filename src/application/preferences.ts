@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
+import { SystemBars, SystemBarsStyle } from '@capacitor/core';
 import {
   DEFAULT_SHORTCUTS,
   DEFAULT_GLOBAL_SHORTCUTS,
@@ -1060,6 +1061,13 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
   }, [locale]);
 
   useEffect(() => applyAppearance(appearance, resolvedMode), [appearance, resolvedMode]);
+
+  useEffect(() => {
+    if (!isAndroidRuntime()) return;
+    void SystemBars.setStyle({
+      style: resolvedMode === 'dark' ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+    }).catch(() => logger.warn('android.system-bars', 'Could not update system bar appearance'));
+  }, [resolvedMode]);
 
   useEffect(() => {
     if (
