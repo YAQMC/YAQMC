@@ -62,6 +62,34 @@ pub enum StoreFilter {
     Repository,
 }
 
+/// Repository discovery tags. The downloaded manifest remains authoritative.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum StoreCategory {
+    #[default]
+    All,
+    Theme,
+    Ui,
+    Page,
+    Provider,
+    Lyrics,
+    Tool,
+}
+
+impl StoreCategory {
+    fn topic(self) -> Option<&'static str> {
+        match self {
+            Self::All => None,
+            Self::Theme => Some("yaqmc-plugin-theme"),
+            Self::Ui => Some("yaqmc-plugin-ui"),
+            Self::Page => Some("yaqmc-plugin-page"),
+            Self::Provider => Some("yaqmc-plugin-provider"),
+            Self::Lyrics => Some("yaqmc-plugin-lyrics"),
+            Self::Tool => Some("yaqmc-plugin-tool"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoreSearchRequest {
@@ -69,6 +97,8 @@ pub struct StoreSearchRequest {
     pub query: String,
     #[serde(default)]
     pub filter: StoreFilter,
+    #[serde(default)]
+    pub category: StoreCategory,
     #[serde(default)]
     pub sort: StoreSort,
     #[serde(default = "first_page")]
@@ -599,7 +629,10 @@ impl StoreCache {
         cancel: &CancellationToken,
     ) -> Result<StoreSearchPage, String> {
         let page = request.page.clamp(1, MAX_SEARCH_PAGE);
-        let q = search_query(&request.query, request.filter)?;
+        let mut q = search_query(&request.query, request.filter)?;
+        if let Some(topic) = request.category.topic() {
+            q.push_str(&format!(" topic:{topic}"));
+        }
         let mut url = reqwest::Url::parse(&format!("{API_ORIGIN}/search/repositories"))
             .map_err(|_| "store-invalid-query")?;
         {
@@ -634,6 +667,12 @@ impl StoreCache {
         let items: Vec<StoreRepository> = items
             .iter()
             .filter_map(parse_repository)
+            .filter(|repo| {
+                request
+                    .category
+                    .topic()
+                    .is_none_or(|topic| repo.topics.iter().any(|t| t == topic))
+            })
             .filter(|repo| seen.insert(repo.id))
             .collect();
         let total_count = fetched
@@ -916,6 +955,48 @@ mod tests {
         ] {
             assert!(!is_package_asset_name(name), "{name}");
         }
+    }
+
+    #[tokio::test]
+    async fn categories_narrow_remote_search_and_recheck_topics_without_hiding_untagged_from_all() {
+        let server = TestServer::start().await;
+        let tagged = repo(
+            "publisher",
+            "theme",
+            1,
+            &[STORE_TOPIC, "yaqmc-plugin-theme"],
+        );
+        let untagged = repo("publisher", "tool", 2, &[STORE_TOPIC]);
+        for (path, items) in [
+            ("/search/repositories?q=topic%3Ayaqmc-plugin+topic%3Ayaqmc-plugin-theme&per_page=20&page=1", json!([tagged.clone(), untagged.clone()])),
+            ("/search/repositories?q=topic%3Ayaqmc-plugin&per_page=20&page=1", json!([tagged, untagged])),
+        ] {
+            put_json(&server, path, 200, vec![], json!({"total_count":2,"items":items}));
+        }
+        let cache = StoreCache::default();
+        let cancel = CancellationToken::new();
+        let themes = cache
+            .search(
+                &server.http,
+                StoreSearchRequest {
+                    category: StoreCategory::Theme,
+                    ..Default::default()
+                },
+                &cancel,
+            )
+            .await
+            .unwrap();
+        assert_eq!(themes.items.len(), 1);
+        assert_eq!(themes.items[0].repo, "theme");
+        let all = cache
+            .search(&server.http, StoreSearchRequest::default(), &cancel)
+            .await
+            .unwrap();
+        assert_eq!(all.items.len(), 2);
+        assert!(serde_json::from_value::<StoreSearchRequest>(
+            json!({"category":"theme OR topic:other"})
+        )
+        .is_err());
     }
 
     #[tokio::test]

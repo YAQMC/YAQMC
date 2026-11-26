@@ -44,6 +44,7 @@ pub enum TimeoutClass {
     Control,
     Standard,
     Long,
+    Authorization,
 }
 
 impl TimeoutClass {
@@ -52,6 +53,7 @@ impl TimeoutClass {
             Self::Control => Duration::from_secs(10),
             Self::Standard => Duration::from_secs(30),
             Self::Long => Duration::from_secs(120),
+            Self::Authorization => Duration::from_secs(10 * 60),
         }
     }
 }
@@ -892,6 +894,8 @@ const fn timeout_class(name: &str) -> TimeoutClass {
         || const_eq(name, "core_shutdown_prepare")
     {
         TimeoutClass::Long
+    } else if const_eq(name, "provider_auth_oauth_start") {
+        TimeoutClass::Authorization
     } else {
         TimeoutClass::Standard
     }

@@ -102,6 +102,18 @@ pub fn host_command_event(command: HostCommand) -> (&'static str, Value) {
         HostCommand::RaiseMainWindow => json!({ "command": "raise" }),
         HostCommand::Quit => json!({ "command": "quit" }),
         HostCommand::SurfaceAutoHide(hidden) => json!({ "surfaceAutoHide": hidden }),
+        HostCommand::OpenProtectedHls {
+            session_id,
+            page_url,
+        } => json!({
+            "command": "openProtectedHls",
+            "sessionId": session_id,
+            "pageUrl": page_url,
+        }),
+        HostCommand::CloseProtectedHls { session_id } => json!({
+            "command": "closeProtectedHls",
+            "sessionId": session_id,
+        }),
     };
     (CHANNEL_HOST_COMMAND, payload)
 }

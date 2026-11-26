@@ -50,7 +50,7 @@ describe('PACK-04 handshake version equality', () => {
 
   it('pins Electron 43.8.3 and electron-updater 6.8.9, and keeps the 32 MiB cap', () => {
     const pkg = readJson('apps/desktop/package.json');
-    expect(pkg.devDependencies?.electron).toBe('43.8.3');
+    expect(pkg.devDependencies?.electron).toBe('github:castlabs/electron-releases#v43.8.3+wvcus');
     expect(pkg.dependencies?.['electron-updater']).toBe('6.8.9');
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
   });

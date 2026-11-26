@@ -838,12 +838,13 @@ impl PlayerService {
     }
 
     pub async fn play(&self) -> Result<PlayerSnapshot, PlayerError> {
-        let (index, position, loaded, guard) = {
+        let (index, position, resumable, guard) = {
             let core = self.core.read().await;
+            let engine = self.audio.snapshot();
             (
                 core.current_index.ok_or(PlayerError::EmptyQueue)?,
                 core.position_ms,
-                self.audio.snapshot().loaded,
+                engine.loaded && engine.source_error.is_none(),
                 core.active_epoch_guard.clone(),
             )
         };
@@ -853,7 +854,9 @@ impl PlayerService {
         {
             return Err(self.cancel_active_source().await);
         }
-        if !loaded {
+        // Explicit play retries a failed source with a new session. Resuming a
+        // terminal decoder/DRM session cannot recover it or refresh its recipe.
+        if !resumable {
             return self.load_index(index, true, position).await;
         }
         if let Err(error) = self.audio.play() {
@@ -4064,6 +4067,48 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
             vec!["qq-first", "plugin-disabled", "qq-last"]
         );
+    }
+
+    #[tokio::test]
+    async fn explicit_play_reloads_a_failed_session_but_resumes_a_healthy_pause() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            engine.clone(),
+            Arc::new(CountingResolver {
+                calls: Arc::clone(&resolver_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .unwrap();
+        player.seek(4_200).await.unwrap();
+        player.pause().await.unwrap();
+        player.play().await.unwrap();
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 1);
+        assert_eq!(engine.load_count(), 1);
+
+        engine.force_snapshot(|state| {
+            state.playing = false;
+            state.paused = false;
+            state.source_error = Some("license request rejected".to_owned());
+        });
+        let previous_generation = engine.snapshot().source_generation;
+        let retried = player.play().await.unwrap();
+
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 2);
+        assert_eq!(engine.load_count(), 2);
+        assert!(engine.snapshot().source_generation > previous_generation);
+        assert!(engine.snapshot().source_error.is_none());
+        assert_eq!(retried.queue[retried.current_index.unwrap()].id, "one");
+        assert_eq!(retried.position_ms, 4_200);
+        assert_eq!(retried.playback_state, PlaybackState::Playing);
     }
 
     #[tokio::test]

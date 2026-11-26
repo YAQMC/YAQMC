@@ -16,6 +16,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.io.File
 import org.yaqmc.android.core.CoreManager
@@ -23,6 +26,7 @@ import org.yaqmc.android.core.CoreManager
 @UnstableApi
 class ExoAudioBackend(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val dataSourceFactory = DefaultDataSource.Factory(context.applicationContext)
     private val exoPlayer: ExoPlayer
 
     @Volatile var currentPositionMs: Long = 0L
@@ -78,8 +82,7 @@ class ExoAudioBackend(context: Context) {
 
     init {
         val appContext = context.applicationContext
-        val baseDataSourceFactory = DefaultDataSource.Factory(appContext)
-        val yaqmcDataSourceFactory = NativeAudioDataSourceFactory(baseDataSourceFactory)
+        val yaqmcDataSourceFactory = NativeAudioDataSourceFactory(dataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(yaqmcDataSourceFactory)
         val renderersFactory = DefaultRenderersFactory(appContext)
 
@@ -189,7 +192,11 @@ class ExoAudioBackend(context: Context) {
         mainHandler.postDelayed(timeout, PREPARE_TIMEOUT_MS)
     }
 
-    fun load(streamId: Long, localPath: String?, format: String): Boolean {
+    private fun beginLoad(
+        streamId: Long,
+        durationHintMs: Long,
+        configurePlayer: () -> Unit,
+    ): Boolean {
         val epoch = ++loadEpoch
         clearPrepareTimeout()
         loadedStreamId = streamId
@@ -201,35 +208,74 @@ class ExoAudioBackend(context: Context) {
 
             isEnded = false
             isPlaying = false
-            // Media3 has not prepared the source yet. Reporting buffering keeps
-            // Core from treating the load as immediately playable.
             isBuffering = true
             currentPositionMs = 0L
-            durationMs = C.TIME_UNSET
-
-            val mimeType = mimeTypeForFormat(format)
-            val mediaItem = if (!localPath.isNullOrEmpty()) {
-                val file = File(localPath)
-                MediaItem.Builder()
-                    .setUri(Uri.fromFile(file))
-                    .setMimeType(mimeType)
-                    .build()
-            } else {
-                MediaItem.Builder()
-                    .setUri(Uri.parse("yaqmc-stream://stream/$streamId"))
-                    .setMimeType(mimeType)
-                    .build()
-            }
+            durationMs = if (durationHintMs > 0L) durationHintMs else C.TIME_UNSET
 
             attachListener(epoch)
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            reportState()
-            schedulePrepareTimeout(epoch)
+            try {
+                configurePlayer()
+                exoPlayer.prepare()
+                reportState()
+                schedulePrepareTimeout(epoch)
+            } catch (error: RuntimeException) {
+                clearPrepareTimeout()
+                errorKind = KIND_SOURCE
+                lastError = sanitizePlaybackError(error)
+                isBuffering = false
+                isPlaying = false
+                reportState()
+            }
         }
         return true
     }
 
+    fun load(streamId: Long, localPath: String?, format: String): Boolean {
+        val mimeType = mimeTypeForFormat(format)
+        val mediaItem = if (!localPath.isNullOrEmpty()) {
+            MediaItem.Builder()
+                .setUri(Uri.fromFile(File(localPath)))
+                .setMimeType(mimeType)
+                .build()
+        } else {
+            MediaItem.Builder()
+                .setUri(Uri.parse("yaqmc-stream://stream/$streamId"))
+                .setMimeType(mimeType)
+                .build()
+        }
+        return beginLoad(streamId, C.TIME_UNSET) {
+            exoPlayer.setMediaItem(mediaItem)
+        }
+    }
+
+    fun loadProtectedHls(
+        streamId: Long,
+        manifestUrl: String,
+        licenseUrl: String,
+        durationMs: Long,
+    ): Boolean {
+        val manifestUri = Uri.parse(manifestUrl)
+        val licenseUri = Uri.parse(licenseUrl)
+        if (!isLoopbackHttp(manifestUri) ||
+            !isLoopbackHttp(licenseUri) ||
+            manifestUri.authority != licenseUri.authority
+        ) {
+            return false
+        }
+        val mediaItem = MediaItem.Builder()
+            .setUri(manifestUri)
+            .setMimeType(MimeTypes.APPLICATION_M3U8)
+            .build()
+        return beginLoad(streamId, durationMs) {
+            val drmCallback = HttpMediaDrmCallback(licenseUrl, dataSourceFactory)
+            val drmSessionManager = DefaultDrmSessionManager.Builder()
+                .setUuidAndExoMediaDrmProvider(C.WIDEVINE_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                .build(drmCallback)
+            val protectedSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+                .setDrmSessionManagerProvider { drmSessionManager }
+            exoPlayer.setMediaSource(protectedSourceFactory.createMediaSource(mediaItem))
+        }
+    }
     fun play() {
         mainHandler.post {
             exoPlayer.play()
@@ -343,6 +389,14 @@ class ExoAudioBackend(context: Context) {
         else -> KIND_OUTPUT
     }
 
+    private fun isLoopbackHttp(uri: Uri): Boolean =
+        uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port in 1..65535
+
+    private fun sanitizePlaybackError(error: Throwable): String =
+        error.message
+            ?.replace(LOOPBACK_URL, "protected://local/")
+            ?.take(512)
+            ?: "Protected HLS playback failed"
     private fun mimeTypeForFormat(format: String): String = when (format.lowercase()) {
         "mp3" -> MimeTypes.AUDIO_MPEG
         "aac", "m4a" -> MimeTypes.AUDIO_AAC
@@ -367,5 +421,6 @@ class ExoAudioBackend(context: Context) {
         private const val KIND_SOURCE = "source"
         private const val KIND_DECODER = "decoder"
         private const val KIND_OUTPUT = "output"
+        private val LOOPBACK_URL = Regex("http://127\\.0\\.0\\.1:\\d+/[0-9a-f]{64}/")
     }
 }

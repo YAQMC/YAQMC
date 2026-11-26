@@ -11,6 +11,7 @@ import { FrameDecoder, ProtocolError, writeFrame } from './frames';
 export const CONTROL_TIMEOUT_MS = 10_000;
 export const STANDARD_TIMEOUT_MS = 30_000;
 export const LONG_TIMEOUT_MS = 120_000;
+export const AUTHORIZATION_TIMEOUT_MS = 10 * 60_000;
 
 const LONG_METHODS = new Set([
   // Local Provider components may wait for an explicit user directory choice.
@@ -46,6 +47,9 @@ const KNOWN_KINDS = new Set([
 export function methodTimeoutMs(method: string): number {
   if (method.startsWith('player_') || method === 'core_ping') {
     return CONTROL_TIMEOUT_MS;
+  }
+  if (method === 'provider_auth_oauth_start') {
+    return AUTHORIZATION_TIMEOUT_MS;
   }
   if (LONG_METHODS.has(method)) {
     return LONG_TIMEOUT_MS;

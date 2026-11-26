@@ -45,6 +45,7 @@ credentialLoad(String account): String?
 credentialSave(String account, String secret): Boolean
 credentialDelete(String account): Boolean
 audioLoad(long streamId, String? localPath, String format): Boolean
+audioLoadProtectedHls(long streamId, String manifestUrl, String licenseUrl, long durationMs): Boolean
 audioPlay()
 audioPause()
 audioStop()

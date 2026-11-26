@@ -26,6 +26,17 @@ described in [docs/lyrics.md](docs/lyrics.md#amll-decision).
 in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current pinned `qm-api-rs` revision;
 miaosic was protocol corroboration only.
 
+## hls.js
+
+Source: <https://github.com/video-dev/hls.js>
+
+Package: `hls.js` `1.7.4`, licensed under the Apache License 2.0.
+
+YAQMC embeds the unmodified package distribution for its isolated protected-audio loopback page. The runtime asset
+is [crates/yaqmc-core/assets/hls.min.js](crates/yaqmc-core/assets/hls.min.js), and its upstream copyright and license
+notice is retained in [crates/yaqmc-core/assets/hls.min.js.LICENSE](crates/yaqmc-core/assets/hls.min.js.LICENSE).
+Distributors must retain both files and the Apache License text referred to by that notice.
+
 ## OpenCC JavaScript
 
 Source: <https://github.com/nk2028/opencc-js>

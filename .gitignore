@@ -36,6 +36,7 @@ apps/desktop/resources/updater/
 
 # Android generated outputs and local SDK configuration
 apps/android/android/.gradle/
+apps/android/android/.kotlin/
 apps/android/android/build/
 apps/android/android/app/build/
 apps/android/android/app/src/main/assets/

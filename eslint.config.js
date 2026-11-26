@@ -25,6 +25,7 @@ export default tseslint.config(
       'test-results/**',
       'blob-report/**',
       'tests/fixtures/**',
+      'crates/yaqmc-core/assets/**/*.min.js',
       'packages/*/dist',
       'apps/*/dist',
       'apps/*/dist/**',

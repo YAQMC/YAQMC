@@ -245,6 +245,8 @@ describe('core spawn env allowlist', () => {
   const parentEnv: NodeJS.ProcessEnv = {
     Path: 'C:\\Windows\\system32',
     SystemRoot: 'C:\\Windows',
+    ProgramFiles: 'C:\\Program Files',
+    'ProgramFiles(x86)': 'C:\\Program Files (x86)',
     USERPROFILE: 'C:\\Users\\test',
     APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
     LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
@@ -297,6 +299,8 @@ describe('core spawn env allowlist', () => {
     expect(env).toMatchObject({
       Path: 'C:\\Windows\\system32',
       SystemRoot: 'C:\\Windows',
+      ProgramFiles: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
       USERPROFILE: 'C:\\Users\\test',
       APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
       LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
 import {
+  AUTHORIZATION_TIMEOUT_MS,
   CONTROL_TIMEOUT_MS,
   CoreClient,
   type CoreInvokeError,
@@ -67,6 +68,7 @@ describe('CoreClient', () => {
     expect(methodTimeoutMs('plugin_install')).toBe(LONG_TIMEOUT_MS);
     expect(methodTimeoutMs('provider_device_playback_preview')).toBe(LONG_TIMEOUT_MS);
     expect(methodTimeoutMs('provider_device_playback_takeover')).toBe(LONG_TIMEOUT_MS);
+    expect(methodTimeoutMs('provider_auth_oauth_start')).toBe(AUTHORIZATION_TIMEOUT_MS);
     expect(methodTimeoutMs('qqmusic_home')).toBe(STANDARD_TIMEOUT_MS);
   });
 

@@ -83,6 +83,43 @@ The fake provider remains a permanent deterministic sibling. It deep-clones fixt
 typed missing-entity failures, and covers every lyric renderer state. It is used by browser development, unit tests,
 screenshots, and offline provider-independent UI work.
 
+## Plugin-owned protected browser player
+
+The API v3 `playback.resolve` envelope can attach `source.browserPlayer` to a
+`protected-hls` source:
+
+```json
+{
+  "entry": "assets/player.html",
+  "scripts": ["assets/hls.min.js"]
+}
+```
+
+The plugin owns its HLS/EME implementation and DRM request recipes. YAQMC snapshots
+the declared files from the active package and serves them in an isolated browser
+window, without Node, the application IPC bridge, external network access or
+filesystem access. HTML is bounded to 64 KiB, each script to 1 MiB, and the total to
+2 MiB with at most eight scripts. Missing, invalid, duplicate or oversized files
+fail source resolution; a requested plugin player never falls back to the host player.
+Existing sources without this field retain their existing browser implementation.
+
+The page is served at `/{session}/player`; relative `assets/...` URLs serve only
+declared scripts. The same session supplies `config`, `m3u8`, `cert`, `license`,
+`command?after=N` and `state` routes. `config` returns `serverCertificate`;
+`command` returns `{seq,command}` with `type` equal to `play`, `pause`, `seek`
+(`positionMs`) or `volume` (`volumeMillis`). The page POSTs JSON to `state` with
+`kind` (`ready`, `manifest`, `playing`, `paused`, `buffering`, `seeked`, `duration`,
+`ended`, `error` or `diagnostic`), `positionMs` and optional `durationMs`. Errors
+can include `message`, `errorType`, `errorDetail` and `httpStatus`. These interfaces
+contain no upstream URL or credential. License challenges and certificates remain
+opaque to the plugin Wasm instance and pass through the origin-bound request recipes.
+
+Native Android continues using its system DRM/media primitives with the plugin's
+manifest, certificate and license recipes; the browser assets apply to desktop
+playback. The host supplies the platform runtime, so plugin code does not change
+its codec/CDM capabilities or runtime signature requirements. Updating the player
+assets requires a plugin update rather than a YAQMC rebuild.
+
 ## Error contract
 
 Provider errors include a stable `code`, restrained user-facing `message`, and `retryable` flag. Network outage,

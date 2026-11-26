@@ -268,54 +268,55 @@ export class FakeMusicProvider implements MusicProvider {
       kind === 'mv'
         ? []
         : kind === 'song'
-        ? allSongs.filter((song) =>
-            includesQuery(
-              song.title,
-              song.album.title,
-              ...song.artists.map((artist) => artist.name),
-            ),
-          )
-        : kind === 'album'
-          ? albums
-              .filter((album) => includesQuery(album.title, album.artist.name, album.genre))
-              .map<AlbumPreview>((album) => ({
-                id: album.id,
-                title: album.title,
-                artist: {
-                  id: album.artist.id,
-                  name: album.artist.name,
+          ? allSongs.filter((song) =>
+              includesQuery(
+                song.title,
+                song.album.title,
+                ...song.artists.map((artist) => artist.name),
+              ),
+            )
+          : kind === 'album'
+            ? albums
+                .filter((album) => includesQuery(album.title, album.artist.name, album.genre))
+                .map<AlbumPreview>((album) => ({
+                  id: album.id,
+                  title: album.title,
+                  artist: {
+                    id: album.artist.id,
+                    name: album.artist.name,
+                    artwork: clone(album.artwork),
+                  },
                   artwork: clone(album.artwork),
-                },
-                artwork: clone(album.artwork),
-                releaseYear: album.releaseYear,
-              }))
-          : kind === 'playlist'
-            ? playlists
-                .filter((playlist) =>
-                  includesQuery(playlist.title, playlist.description, playlist.owner.displayName),
-                )
-                .map<PlaylistPreview>((playlist) => ({
-                  id: playlist.id,
-                  title: playlist.title,
-                  creator: playlist.owner.displayName,
-                  artwork: clone(playlist.artwork),
-                  trackCount: playlist.tracks.length,
+                  releaseYear: album.releaseYear,
                 }))
-            : allSongs
-                .flatMap((song) => song.artists)
-                .filter(
-                  (artist, index, all) => all.findIndex((item) => item.id === artist.id) === index,
-                )
-                .filter((artist) => includesQuery(artist.name))
-                .map((artist) => ({
-                  id: artist.id,
-                  name: artist.name,
-                  artwork: clone(
-                    albums.find((album) => album.artist.id === artist.id)?.artwork ??
-                      allSongs.find((song) => song.artists.some((item) => item.id === artist.id))!
-                        .artwork,
-                  ),
-                }));
+            : kind === 'playlist'
+              ? playlists
+                  .filter((playlist) =>
+                    includesQuery(playlist.title, playlist.description, playlist.owner.displayName),
+                  )
+                  .map<PlaylistPreview>((playlist) => ({
+                    id: playlist.id,
+                    title: playlist.title,
+                    creator: playlist.owner.displayName,
+                    artwork: clone(playlist.artwork),
+                    trackCount: playlist.tracks.length,
+                  }))
+              : allSongs
+                  .flatMap((song) => song.artists)
+                  .filter(
+                    (artist, index, all) =>
+                      all.findIndex((item) => item.id === artist.id) === index,
+                  )
+                  .filter((artist) => includesQuery(artist.name))
+                  .map((artist) => ({
+                    id: artist.id,
+                    name: artist.name,
+                    artwork: clone(
+                      albums.find((album) => album.artist.id === artist.id)?.artwork ??
+                        allSongs.find((song) => song.artists.some((item) => item.id === artist.id))!
+                          .artwork,
+                    ),
+                  }));
     const start = Math.max(0, (Math.max(1, page) - 1) * Math.max(1, limit));
     const items = matches.slice(start, start + Math.max(1, limit));
     const result = {

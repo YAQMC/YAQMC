@@ -194,6 +194,19 @@ describe('host boot wiring', () => {
     expect(boot).not.toContain('!process.env.PORTABLE_EXECUTABLE_FILE');
   });
 
+  it('prepares Widevine before opening any BrowserWindow', () => {
+    const boot = source.slice(
+      source.indexOf('app.whenReady()'),
+      source.indexOf("app.on('before-quit'"),
+    );
+    const prepare = boot.indexOf(
+      'await prepareProtectedAudioRuntime(process.platform, components);',
+    );
+    expect(boot.indexOf('initializeHostLog();')).toBeLessThan(prepare);
+    expect(prepare).toBeGreaterThan(-1);
+    expect(prepare).toBeLessThan(boot.indexOf('createMainWindow(root);'));
+  });
+
   it('restores lyric surface geometry after core ready using BASE-04 keys', () => {
     expect(source).toContain('lyricsSurfaceSettingsFromCore');
     expect(source).toContain('restoreGeometry');

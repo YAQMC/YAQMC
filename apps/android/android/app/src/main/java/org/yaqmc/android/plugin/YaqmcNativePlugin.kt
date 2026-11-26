@@ -642,6 +642,9 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                             ?.optJSONArray("externalNavigationRules")
                             ?.toString()
                             ?: "[]"
+                        val browserSession = prepared
+                            ?.optJSONObject("browserSession")
+                            ?.toString()
                         if (
                             attemptId == null ||
                             url == null ||
@@ -692,6 +695,9 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                                         OAuthActivity.EXTRA_CALLBACK_PREFIX,
                                         callbackPrefix,
                                     )
+                                    browserSession?.let {
+                                        putExtra(OAuthActivity.EXTRA_BROWSER_SESSION, it)
+                                    }
                                 },
                                 "oauthResult",
                             )
@@ -827,6 +833,15 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             .put("attemptId", attempt.attemptId)
             .put("callbackUrl", callbackUrl)
         attempt.providerId?.let { completeParams.put("providerId", it) }
+        val cookiesJson = result.data?.getStringExtra(OAuthActivity.EXTRA_BROWSER_SESSION_COOKIES)
+        if (cookiesJson != null) {
+            val cookies = runCatching { JSONArray(cookiesJson) }.getOrNull()
+            if (cookies == null || cookies.length() == 0) {
+                cancelOAuth(attempt)
+                return call.reject("OAuth browser cookies were invalid", "oauth.invalid_result")
+            }
+            completeParams.put("browserSessionCookies", cookies)
+        }
         invokeCore(call, attempt.completeMethod, completeParams.toString(), "host")
     }
 

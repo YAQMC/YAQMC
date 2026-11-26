@@ -174,6 +174,7 @@ fn reset_playback_snapshot(snapshot: &mut AudioEngineSnapshot) {
 pub enum PreparedPlaybackLocation {
     Local(PathBuf),
     Progressive(ProgressiveSource),
+    ProtectedHls(Arc<dyn crate::media::ProtectedHlsSource>),
     EncryptedLocal {
         path: PathBuf,
         content_length: u64,
@@ -1292,6 +1293,7 @@ pub fn open_playback_stream(
                     monitor: Some(progressive.monitor()),
                 })
             }
+            PreparedPlaybackLocation::ProtectedHls(_) => Err(AudioEngineError::DecoderUnsupported),
             PreparedPlaybackLocation::EncryptedLocal {
                 path,
                 content_length,

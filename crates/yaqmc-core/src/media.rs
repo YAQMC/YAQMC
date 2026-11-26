@@ -14,7 +14,7 @@ use tokio::io::AsyncWriteExt;
 pub use yaqmc_provider_api::media::{
     AudioFormat, EncryptedMedia, MediaDecryptor, OpaquePlaybackSource, PlaybackEpochClock,
     PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
-    ResolvedPlaybackSource,
+    ProtectedHlsResponse, ProtectedHlsSource, ResolvedPlaybackSource,
 };
 
 const OPAQUE_MEDIA_CHUNK_BYTES: usize = 1024 * 1024;
@@ -87,6 +87,12 @@ impl MediaPreparer for CachedMediaPreparer {
                 )
                 .await?;
                 PreparedPlaybackLocation::Local(cached.path)
+            }
+            PlaybackLocation::ProtectedHls(source) => {
+                if source.manifest_url().is_empty() || source.manifest_url().len() > 4096 {
+                    return Err(PlaybackSourceError::ProviderFailure);
+                }
+                PreparedPlaybackLocation::ProtectedHls(source)
             }
             PlaybackLocation::Http { url, headers } => {
                 let mut request_headers = HeaderMap::new();

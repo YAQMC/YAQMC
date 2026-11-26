@@ -56,6 +56,28 @@
 `FakeMusicProvider` 永久保留，用于浏览器开发、单元测试、截图和离线 UI。它深拷贝 fixture、支持取消、
 稳定缺失实体错误，并覆盖所有歌词状态。
 
+## 插件提供的受保护网页播放器
+
+API v3 的 `playback.resolve` 可在 `protected-hls` source 中增加
+`browserPlayer: {"entry":"assets/player.html","scripts":["assets/hls.min.js"]}`。
+插件负责 HLS/EME 播放实现和 DRM 请求描述；YAQMC 从当前插件包读取并保留资源快照，
+仅提供隔离浏览器运行环境与媒体代理，不向页面开放 Node、应用 IPC、外部网络或文件系统。
+HTML 上限 64 KiB，每个脚本上限 1 MiB，最多八个脚本，总计 2 MiB。
+资源缺失、重复、越界或超限时明确报错，不切换为宿主播放器；未声明该字段的旧插件维持既有行为。
+
+播放器位于 `/{session}/player`，相对 `assets/...` 只能读取所声明脚本。
+同一 session 提供 `config`、`m3u8`、`cert`、`license`、`command?after=N` 和 `state`。
+`config` 返回 `serverCertificate`；`command` 返回 `{seq,command}`，命令类型为
+`play`、`pause`、`seek`（`positionMs`）和 `volume`（`volumeMillis`）。
+页面向 `state` POST JSON：`kind` 为 `ready`、`manifest`、`playing`、`paused`、
+`buffering`、`seeked`、`duration`、`ended`、`error` 或 `diagnostic`，并报告 `positionMs`
+及可选 `durationMs`。错误可附带 `message`、`errorType`、`errorDetail`、`httpStatus`。
+上述页面接口不含上游 URL 或凭据，许可证 challenge 和证书通过插件声明的同来源请求代理。
+
+Android 继续使用系统 DRM/媒体原语执行插件的清单、证书和许可证请求；网页资源用于桌面播放。
+宿主提供平台运行时，因此插件不能改变其编码器/CDM 能力或签名要求。
+修改播放脚本只需更新插件，无需重新构建 YAQMC。
+
 ## 错误与秘密边界
 
 提供器错误含稳定 `code`、克制 message 和 `retryable`。断网、超时、限流可有限重试；认证过期、权益、

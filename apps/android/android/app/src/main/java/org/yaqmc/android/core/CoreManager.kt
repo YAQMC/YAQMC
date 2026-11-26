@@ -152,6 +152,14 @@ object CoreManager {
         fun audioLoad(streamId: Long, localPath: String?, format: String): Boolean =
             _audioBackend?.load(streamId, localPath, format) ?: false
 
+        fun audioLoadProtectedHls(
+            streamId: Long,
+            manifestUrl: String,
+            licenseUrl: String,
+            durationMs: Long,
+        ): Boolean =
+            _audioBackend?.loadProtectedHls(streamId, manifestUrl, licenseUrl, durationMs) ?: false
+
         fun audioPlay() {
             _audioBackend?.play()
         }

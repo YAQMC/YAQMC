@@ -1077,6 +1077,16 @@ export const enUS = {
           repository: 'owner/repository',
         },
         filterLabel: 'Search in',
+        categoryLabel: 'Plugin category',
+        category: {
+          all: 'All categories',
+          theme: 'Themes',
+          ui: 'UI & layouts',
+          page: 'Pages',
+          provider: 'Music sources',
+          lyrics: 'Lyrics',
+          tool: 'Tools',
+        },
         filter: {
           all: 'Name, description, topics',
           name: 'Name',
@@ -1092,7 +1102,7 @@ export const enUS = {
         },
         refresh: 'Refresh',
         discoveryNotice:
-          'Repositories are discovered on GitHub through the yaqmc-plugin topic. Listing is not a review or endorsement.',
+          'Categories use publisher-supplied GitHub topics. Untagged plugins remain in All categories. Listing is not a review or endorsement.',
         loading: 'Loading plugins…',
         resultCount: '{{count}} repositories',
         incomplete: 'GitHub returned incomplete results',

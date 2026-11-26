@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -22,7 +23,8 @@ use yaqmc_provider_api::{
     OAuthCallbackMatcher, OAuthLoginProvider, OAuthPrepareResult, OpaquePlaybackSource, Page,
     PlaybackEpoch, PlaybackEpochClock, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
     PlaybackSourceProvider, PlaybackSourceResolver, PlaybackSourceSelection, Playlist,
-    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderAccount, ProviderCapabilities,
+    PlaylistMutationResult, PlaylistTrackMutationRequest, ProtectedHlsBrowserPlayer,
+    ProtectedHlsResponse, ProtectedHlsSource, ProviderAccount, ProviderCapabilities,
     ProviderCommandError, ProviderResult, ProviderScopedOutput, ProviderStatus,
     RecommendationBatch, RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem,
     RenamePlaylistRequest, ResolvedPlaybackSource, SearchResult, Song, DEFAULT_PROFILE_ID,
@@ -36,7 +38,10 @@ use crate::plugin::{
     component::{component_credential_headers, ComponentRuntimeError, ProviderComponent},
     component_host::ComponentHostContext,
     manifest::{PluginManifest, ProviderCapability, ProviderWorld},
-    network::{component_request_origin, origin_allowed, proxy_component_media_range},
+    network::{
+        component_request_origin, origin_allowed, proxy_component_binary_request,
+        proxy_component_media_range,
+    },
 };
 
 const MAX_CATALOG_VALUE_DEPTH: usize = 64;
@@ -82,6 +87,7 @@ pub struct ComponentProviderAdapter {
     last_account_snapshot: Mutex<AccountSnapshot>,
     update_admission: Arc<tokio::sync::RwLock<()>>,
     last_activity: Mutex<Option<Instant>>,
+    package_root: Mutex<Option<PathBuf>>,
 }
 
 struct ProviderCallGuard<'a> {
@@ -173,11 +179,16 @@ impl ComponentProviderAdapter {
             last_account_snapshot: Mutex::new(guest_component_snapshot(&provider_id)),
             update_admission: Arc::new(tokio::sync::RwLock::new(())),
             last_activity: Mutex::new(None),
+            package_root: Mutex::new(None),
         }))
     }
 
     pub fn provider_id(&self) -> &str {
         &self.provider_id
+    }
+
+    pub(crate) fn set_package_root(&self, root: PathBuf) {
+        *self.package_root.lock().unwrap_or_else(|p| p.into_inner()) = Some(root);
     }
 
     pub fn component(&self) -> &ProviderComponent {
@@ -745,7 +756,8 @@ struct ComponentPlaybackResolution {
     sample_rate_hz: Option<u32>,
     #[serde(default)]
     bit_depth: Option<u16>,
-    content_length: u64,
+    #[serde(default)]
+    content_length: Option<u64>,
     #[serde(default)]
     expires_at_ms: Option<u64>,
     #[serde(default)]
@@ -760,9 +772,82 @@ struct ComponentPlaybackResolution {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum ComponentPlaybackRecipe {
-    Cache { key: String },
-    Https { request: Value },
-    Local { root: String, relative: String },
+    Cache {
+        key: String,
+    },
+    Https {
+        request: Value,
+    },
+    Local {
+        root: String,
+        relative: String,
+    },
+    ProtectedHls {
+        #[serde(rename = "manifestRequest")]
+        manifest_request: Value,
+        #[serde(rename = "licenseRequest")]
+        license_request: Value,
+        #[serde(default, rename = "certificateRequest")]
+        certificate_request: Option<Value>,
+        #[serde(default, rename = "browserPlayer")]
+        browser_player: Option<ComponentBrowserPlayer>,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComponentBrowserPlayer {
+    entry: String,
+    #[serde(default)]
+    scripts: Vec<String>,
+}
+
+fn load_browser_player(
+    root: &Path,
+    player: ComponentBrowserPlayer,
+) -> Result<ProtectedHlsBrowserPlayer, PlaybackSourceError> {
+    let invalid = || PlaybackSourceError::ProviderFailure;
+    if player.scripts.len() > 8 || !player.entry.ends_with(".html") {
+        return Err(invalid());
+    }
+    let root = root.canonicalize().map_err(|_| invalid())?;
+    let read = |relative: &str, limit: u64| {
+        if !relative.starts_with("assets/")
+            || !crate::plugin::manifest::is_safe_package_path(relative)
+        {
+            return Err(invalid());
+        }
+        let path = root.join(relative).canonicalize().map_err(|_| invalid())?;
+        if !path.starts_with(&root) {
+            return Err(invalid());
+        }
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|_| invalid())?
+            .take(limit + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| invalid())?;
+        if bytes.is_empty() || bytes.len() as u64 > limit || std::str::from_utf8(&bytes).is_err() {
+            return Err(invalid());
+        }
+        Ok(Arc::<[u8]>::from(bytes))
+    };
+    let html = read(&player.entry, 64 * 1024)?;
+    let mut scripts = BTreeMap::new();
+    let mut total = html.len();
+    for path in player.scripts {
+        if !path.ends_with(".js") || scripts.contains_key(&path) {
+            return Err(invalid());
+        }
+        let bytes = read(&path, 1024 * 1024)?;
+        total += bytes.len();
+        if total > 2 * 1024 * 1024 {
+            return Err(invalid());
+        }
+        scripts.insert(path, bytes);
+    }
+    Ok(ProtectedHlsBrowserPlayer { html, scripts })
 }
 
 impl ComponentPlaybackResolution {
@@ -788,8 +873,12 @@ impl ComponentPlaybackResolution {
             _ => return Err(PlaybackSourceError::DecoderUnsupported),
         };
         let mut cache_key = self.cache_key;
-        let opaque: Arc<dyn OpaquePlaybackSource> = match self.source {
+        let protected_hls = matches!(&self.source, ComponentPlaybackRecipe::ProtectedHls { .. });
+        let location = match self.source {
             ComponentPlaybackRecipe::Local { root, relative } => {
+                let content_length = self
+                    .content_length
+                    .ok_or(PlaybackSourceError::ProviderFailure)?;
                 if !adapter.declared.contains(&ProviderCapability::LocalFiles) {
                     return Err(PlaybackSourceError::ProviderFailure);
                 }
@@ -811,20 +900,23 @@ impl ComponentPlaybackResolution {
                 .await
                 .map_err(|_| PlaybackSourceError::ProviderFailure)?
                 .map_err(|_| PlaybackSourceError::ProviderFailure)?;
-                if stat["type"] != "file" || stat["size"].as_u64() != Some(self.content_length) {
+                if stat["type"] != "file" || stat["size"].as_u64() != Some(content_length) {
                     return Err(PlaybackSourceError::ProviderFailure);
                 }
                 // A guest cache key cannot substitute another root/file or a previous
                 // authorization session's cached audio for the selected local source.
                 cache_key = local_playback_cache_key(&root, &relative, &stat)?;
-                Arc::new(ComponentLocalPlaybackSource {
+                PlaybackLocation::Opaque(Arc::new(ComponentLocalPlaybackSource {
                     root,
                     relative,
                     host: host.clone(),
-                    content_length: self.content_length,
-                })
+                    content_length,
+                }))
             }
             ComponentPlaybackRecipe::Cache { key } => {
+                let content_length = self
+                    .content_length
+                    .ok_or(PlaybackSourceError::ProviderFailure)?;
                 validate_playback_text(&key, 240)?;
                 let host = adapter
                     .host
@@ -834,15 +926,18 @@ impl ComponentPlaybackResolution {
                     .cache_get(&key)
                     .map_err(|_| PlaybackSourceError::CacheFailure)?
                     .ok_or(PlaybackSourceError::CacheFailure)?;
-                if bytes.len() as u64 != self.content_length {
+                if bytes.len() as u64 != content_length {
                     return Err(PlaybackSourceError::RangeUnsupported);
                 }
-                Arc::new(ComponentCachePlaybackSource {
+                PlaybackLocation::Opaque(Arc::new(ComponentCachePlaybackSource {
                     bytes: Arc::from(bytes),
                     host: host.clone(),
-                })
+                }))
             }
             ComponentPlaybackRecipe::Https { request } => {
+                let content_length = self
+                    .content_length
+                    .ok_or(PlaybackSourceError::ProviderFailure)?;
                 let host = adapter
                     .host
                     .as_ref()
@@ -852,25 +947,80 @@ impl ComponentPlaybackResolution {
                 if !origin_allowed(host.allowed_origins(), &origin) {
                     return Err(PlaybackSourceError::ProviderFailure);
                 }
-                Arc::new(ComponentHttpsPlaybackSource {
+                PlaybackLocation::Opaque(Arc::new(ComponentHttpsPlaybackSource {
                     request,
-                    content_length: self.content_length,
+                    content_length,
                     host: host.clone(),
                     allow_credentials: adapter.declared.contains(&ProviderCapability::Account),
-                })
+                }))
+            }
+            ComponentPlaybackRecipe::ProtectedHls {
+                manifest_request,
+                license_request,
+                certificate_request,
+                browser_player,
+            } => {
+                let host = adapter
+                    .host
+                    .clone()
+                    .ok_or(PlaybackSourceError::ProviderUnavailable)?;
+                for request in [
+                    Some(&manifest_request),
+                    Some(&license_request),
+                    certificate_request.as_ref(),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    let origin = component_request_origin(request)
+                        .map_err(|_| PlaybackSourceError::ProviderFailure)?;
+                    if !origin_allowed(host.allowed_origins(), &origin) {
+                        return Err(PlaybackSourceError::ProviderFailure);
+                    }
+                }
+                let manifest_url = manifest_request
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .filter(|url| !url.is_empty() && url.len() <= 4096)
+                    .ok_or(PlaybackSourceError::ProviderFailure)?
+                    .to_owned();
+                let browser_player = if let Some(player) = browser_player {
+                    let root = adapter
+                        .package_root
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .clone()
+                        .ok_or(PlaybackSourceError::ProviderFailure)?;
+                    Some(
+                        tokio::task::spawn_blocking(move || load_browser_player(&root, player))
+                            .await
+                            .map_err(|_| PlaybackSourceError::ProviderFailure)??,
+                    )
+                } else {
+                    None
+                };
+                PlaybackLocation::ProtectedHls(Arc::new(ComponentProtectedHlsPlaybackSource {
+                    manifest_request,
+                    license_request,
+                    certificate_request,
+                    manifest_url,
+                    browser_player,
+                    host,
+                    allow_credentials: adapter.declared.contains(&ProviderCapability::Account),
+                }))
             }
         };
         Ok(ResolvedPlaybackSource {
             cache_key: format!("component:{}:{}", adapter.provider_id, cache_key),
-            location: PlaybackLocation::Opaque(opaque),
+            location,
             format,
             mime_type: self.mime_type,
             quality_label: self.quality_label,
             bitrate_kbps: self.bitrate_kbps,
             sample_rate_hz: self.sample_rate_hz,
             bit_depth: self.bit_depth,
-            content_length: Some(self.content_length),
-            supports_range: true,
+            content_length: self.content_length,
+            supports_range: !protected_hls,
             expires_at_ms: self.expires_at_ms,
             timeline_offset_ms: self.timeline_offset_ms,
             timeline_end_ms: self.timeline_end_ms,
@@ -1025,6 +1175,261 @@ struct ComponentHttpsPlaybackSource {
     allow_credentials: bool,
 }
 
+struct ComponentProtectedHlsPlaybackSource {
+    manifest_request: Value,
+    license_request: Value,
+    certificate_request: Option<Value>,
+    manifest_url: String,
+    browser_player: Option<ProtectedHlsBrowserPlayer>,
+    host: ComponentHostContext,
+    allow_credentials: bool,
+}
+
+impl std::fmt::Debug for ComponentProtectedHlsPlaybackSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ComponentProtectedHlsPlaybackSource")
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl ProtectedHlsSource for ComponentProtectedHlsPlaybackSource {
+    fn manifest_url(&self) -> &str {
+        &self.manifest_url
+    }
+
+    fn browser_player(&self) -> Option<&ProtectedHlsBrowserPlayer> {
+        self.browser_player.as_ref()
+    }
+
+    fn requires_application_certificate(&self) -> bool {
+        self.certificate_request.is_some()
+    }
+
+    async fn fetch_manifest(
+        &self,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError> {
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        let credentials = component_credential_headers(
+            &self.host,
+            self.allow_credentials,
+            &self.manifest_request,
+        )
+        .map_err(|_| PlaybackSourceError::AuthenticationExpired)?;
+        let response = tokio::select! {
+            _ = cancellation.cancelled() => return Err(PlaybackSourceError::Cancelled),
+            result = proxy_component_binary_request(
+                self.host.allowed_origins(),
+                &self.manifest_request,
+                &credentials,
+                Vec::new(),
+            ) => result.map_err(|_| PlaybackSourceError::Network)?,
+        };
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if response.status != 200 {
+            tracing::warn!(
+                target: "player.protected_hls",
+                stage = "manifest-upstream",
+                http_status = response.status,
+                "protected-HLS manifest request failed"
+            );
+        }
+        match response.status {
+            200 => {}
+            401 | 403 => return Err(PlaybackSourceError::AuthenticationExpired),
+            404 | 410 => return Err(PlaybackSourceError::UrlExpired),
+            _ => return Err(PlaybackSourceError::Network),
+        }
+        if response.body.is_empty()
+            || response.body.len() > 4 * 1024 * 1024
+            || response.mime_type.as_deref().is_some_and(|mime| {
+                !mime.contains("mpegurl")
+                    && !mime.starts_with("text/")
+                    && mime != "application/octet-stream"
+            })
+        {
+            return Err(PlaybackSourceError::ProviderFailure);
+        }
+        Ok(ProtectedHlsResponse {
+            status: response.status,
+            body: response.body,
+            content_range: response.content_range,
+            content_length: response.content_length,
+            content_type: response.mime_type,
+        })
+    }
+
+    async fn fetch_media_range(
+        &self,
+        url: String,
+        offset: u64,
+        length: usize,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError> {
+        if length == 0 || length > 4 * 1024 * 1024 {
+            return Err(PlaybackSourceError::RangeUnsupported);
+        }
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        let origin = component_request_origin(&json!({ "url": url }))
+            .map_err(|_| PlaybackSourceError::ProviderFailure)?;
+        if !origin_allowed(self.host.allowed_origins(), &origin) {
+            return Err(PlaybackSourceError::ProviderFailure);
+        }
+        let mut request = self.manifest_request.clone();
+        request["url"] = Value::String(url);
+        request["method"] = Value::String("GET".to_owned());
+        if let Some(object) = request.as_object_mut() {
+            object.remove("body");
+            object.remove("credentialHeaders");
+            object.remove("credentialBodyFields");
+            object.remove("credentialQuerySigning");
+        }
+        let response = tokio::select! {
+            _ = cancellation.cancelled() => return Err(PlaybackSourceError::Cancelled),
+            result = proxy_component_media_range(
+                self.host.allowed_origins(),
+                &request,
+                &[],
+                offset,
+                length,
+            ) => result.map_err(|_| PlaybackSourceError::Network)?,
+        };
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if !matches!(response.status, 200 | 206) {
+            tracing::warn!(
+                target: "player.protected_hls",
+                stage = "media-upstream",
+                http_status = response.status,
+                offset,
+                requested_bytes = length,
+                "protected-HLS media request failed"
+            );
+        }
+        match response.status {
+            200 | 206 => {}
+            401 | 403 => return Err(PlaybackSourceError::AuthenticationExpired),
+            404 | 410 => return Err(PlaybackSourceError::UrlExpired),
+            416 => return Err(PlaybackSourceError::RangeUnsupported),
+            _ => return Err(PlaybackSourceError::Network),
+        }
+        let media = ProtectedHlsResponse {
+            status: response.status,
+            body: response.body,
+            content_range: response.content_range,
+            content_length: response.content_length,
+            content_type: response.mime_type,
+        };
+        if !valid_component_hls_chunk(&media, offset, length) {
+            return Err(PlaybackSourceError::RangeUnsupported);
+        }
+        Ok(media)
+    }
+
+    async fn request_license(
+        &self,
+        challenge: Vec<u8>,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError> {
+        if challenge.is_empty() || challenge.len() > 1024 * 1024 {
+            return Err(PlaybackSourceError::ProviderFailure);
+        }
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        let credentials =
+            component_credential_headers(&self.host, self.allow_credentials, &self.license_request)
+                .map_err(|_| PlaybackSourceError::AuthenticationExpired)?;
+        let response = tokio::select! {
+            _ = cancellation.cancelled() => return Err(PlaybackSourceError::Cancelled),
+            result = proxy_component_binary_request(
+                self.host.allowed_origins(),
+                &self.license_request,
+                &credentials,
+                challenge,
+            ) => result.map_err(|_| PlaybackSourceError::Network)?,
+        };
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if response.status != 200 {
+            tracing::warn!(
+                target: "player.protected_hls",
+                stage = "license-upstream",
+                http_status = response.status,
+                response_bytes = response.body.len(),
+                "protected-HLS license request failed"
+            );
+        }
+        Ok(ProtectedHlsResponse {
+            status: response.status,
+            body: response.body,
+            content_range: response.content_range,
+            content_length: response.content_length,
+            content_type: response.mime_type,
+        })
+    }
+
+    async fn fetch_application_certificate(
+        &self,
+        cancellation: CancellationToken,
+    ) -> Result<Option<ProtectedHlsResponse>, PlaybackSourceError> {
+        let Some(request) = &self.certificate_request else {
+            return Ok(None);
+        };
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        let credentials = component_credential_headers(&self.host, self.allow_credentials, request)
+            .map_err(|_| PlaybackSourceError::AuthenticationExpired)?;
+        let response = tokio::select! {
+            _ = cancellation.cancelled() => return Err(PlaybackSourceError::Cancelled),
+            result = proxy_component_binary_request(
+                self.host.allowed_origins(),
+                request,
+                &credentials,
+                Vec::new(),
+            ) => result.map_err(|_| PlaybackSourceError::Network)?,
+        };
+        self.host
+            .ensure_active()
+            .map_err(|_| PlaybackSourceError::Cancelled)?;
+        if response.status != 200 {
+            tracing::warn!(
+                target: "player.protected_hls",
+                stage = "certificate-upstream",
+                http_status = response.status,
+                response_bytes = response.body.len(),
+                "protected-HLS certificate request failed"
+            );
+            return match response.status {
+                401 | 403 => Err(PlaybackSourceError::AuthenticationExpired),
+                404 | 410 => Err(PlaybackSourceError::UrlExpired),
+                _ => Err(PlaybackSourceError::Network),
+            };
+        }
+        if response.body.is_empty() || response.body.len() > 1024 * 1024 {
+            return Err(PlaybackSourceError::ProviderFailure);
+        }
+        Ok(Some(ProtectedHlsResponse {
+            status: response.status,
+            body: response.body,
+            content_range: response.content_range,
+            content_length: response.content_length,
+            content_type: response.mime_type,
+        }))
+    }
+}
+
 impl std::fmt::Debug for ComponentHttpsPlaybackSource {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -1103,6 +1508,29 @@ impl OpaquePlaybackSource for ComponentHttpsPlaybackSource {
         }
         Ok(response.body)
     }
+}
+
+fn valid_component_hls_chunk(
+    response: &ProtectedHlsResponse,
+    offset: u64,
+    requested_length: usize,
+) -> bool {
+    if response.body.is_empty() || response.body.len() > requested_length {
+        return false;
+    }
+    response
+        .content_range
+        .as_deref()
+        .is_none_or(|content_range| {
+            let Some((start, end, _)) = parse_component_content_range(content_range) else {
+                return false;
+            };
+            start == offset
+                && end
+                    .checked_sub(start)
+                    .and_then(|value| value.checked_add(1))
+                    == Some(response.body.len() as u64)
+        })
 }
 
 fn parse_component_content_range(value: &str) -> Option<(u64, u64, u64)> {
@@ -2140,6 +2568,55 @@ fn invalid_response(message: &str) -> ProviderCommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_player_reads_only_bounded_declared_package_assets() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("assets")).unwrap();
+        let entry = root.path().join("assets/player.html");
+        std::fs::write(&entry, "<audio></audio>").unwrap();
+        std::fs::write(root.path().join("assets/player.js"), "window.ready = true;").unwrap();
+        let definition = || ComponentBrowserPlayer {
+            entry: "assets/player.html".to_owned(),
+            scripts: vec!["assets/player.js".to_owned()],
+        };
+        let player = load_browser_player(root.path(), definition()).unwrap();
+        // Each playback retains one coherent snapshot even if a loose plugin is edited.
+        std::fs::write(&entry, "changed").unwrap();
+        assert_eq!(player.html.as_ref(), b"<audio></audio>");
+        assert_eq!(
+            player.scripts["assets/player.js"].as_ref(),
+            b"window.ready = true;"
+        );
+        for path in [
+            "../outside.html",
+            "assets/../outside.html",
+            "assets/missing.html",
+            "https://remote/player.html",
+        ] {
+            let mut invalid = definition();
+            invalid.entry = path.to_owned();
+            assert!(load_browser_player(root.path(), invalid).is_err());
+        }
+        let mut duplicate = definition();
+        duplicate.scripts.push("assets/player.js".to_owned());
+        assert!(load_browser_player(root.path(), duplicate).is_err());
+        std::fs::write(entry, vec![b'x'; 64 * 1024 + 1]).unwrap();
+        assert!(load_browser_player(root.path(), definition()).is_err());
+    }
+
+    #[test]
+    fn protected_hls_accepts_a_nested_manifest_shorter_than_the_range_cap() {
+        let nested = ProtectedHlsResponse {
+            status: 206,
+            body: b"#EXTM3U\n#EXT-X-VERSION:3\n".to_vec(),
+            content_range: Some("bytes 0-24/25".to_owned()),
+            content_length: Some(25),
+            content_type: Some("application/vnd.apple.mpegurl".to_owned()),
+        };
+        assert!(valid_component_hls_chunk(&nested, 0, 4 * 1024 * 1024));
+        assert!(!valid_component_hls_chunk(&nested, 1, 4 * 1024 * 1024));
+    }
+
     #[test]
     fn guests_cannot_claim_host_owned_federation_origin() {
         let value = serde_json::json!({"items": [{"provider": {

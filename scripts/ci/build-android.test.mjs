@@ -104,6 +104,17 @@ test('Android TLS uses the Cargo-locked CRL-capable JVM companion', () => {
   );
   const manifest = read('apps/android/android/app/src/main/AndroidManifest.xml');
   assert.match(manifest, /android:usesCleartextTraffic="false"/u);
-  // The AAR must supply its scoped CRL configuration without an app override.
-  assert.doesNotMatch(manifest, /android:networkSecurityConfig/u);
+  // MV and protected-audio proxies use loopback HTTP; all external origins stay HTTPS-only.
+  assert.match(manifest, /android:networkSecurityConfig="@xml\/network_security_config"/u);
+  const network = read('apps/android/android/app/src/main/res/xml/network_security_config.xml');
+  assert.match(network, /<base-config cleartextTrafficPermitted="false"\s*\/>/u);
+  assert.equal([...network.matchAll(/<domain-config\b/gu)].length, 1);
+  assert.match(network, /<domain-config cleartextTrafficPermitted="true">/u);
+  assert.deepEqual(
+    [...network.matchAll(/<domain includeSubdomains="false">([^<]+)<\/domain>/gu)].map(
+      (match) => match[1],
+    ),
+    ['127.0.0.1', 'localhost'],
+  );
+  assert.equal([...network.matchAll(/<domain\s/gu)].length, 2);
 });

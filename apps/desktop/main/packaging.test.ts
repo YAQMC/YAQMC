@@ -22,7 +22,7 @@ describe('PACK-01 electron-builder', () => {
       homepage?: string;
       scripts?: Record<string, string>;
     };
-    expect(pkg.devDependencies?.electron).toBe('43.8.3');
+    expect(pkg.devDependencies?.electron).toBe('github:castlabs/electron-releases#v43.8.3+wvcus');
     expect(pkg.devDependencies?.['electron-builder']).toBe('26.15.7');
     expect(pkg.dependencies?.['electron-updater']).toBe('6.8.9');
     expect(pkg.author).toBe('YAQMC contributors');
@@ -50,8 +50,8 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).not.toContain('harness/**');
     expect(yaml).toContain("'!node_modules/@yaqmc/client{,/**}'");
     expect(yaml).toContain('electronVersion: 43.8.3');
+    expect(yaml).toContain('electronDist: ../../node_modules/electron/dist');
     expect(yaml).toMatch(/protocols:[\s\S]*schemes:[\s\S]*- yaqmc/);
-    expect(yaml).not.toContain('electronDist:');
     expect(yaml).toContain('from: resources/core');
     expect(yaml).not.toContain('from: ../../output');
     expect(yaml).not.toMatch(/from:\s*output\b/);

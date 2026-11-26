@@ -22,6 +22,8 @@ pub mod playback_session;
 pub mod playback_types;
 pub mod player;
 pub mod plugin;
+#[cfg(feature = "protected-hls")]
+pub mod protected_hls;
 pub mod provider_profiles;
 pub mod server;
 pub mod statistics;
@@ -61,13 +63,44 @@ pub struct CoreConfig {
     pub build_commit: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum HostCommand {
     RaiseMainWindow,
     Quit,
     /// Lyric surfaces should hide (`true`) or restore (`false`) for a
     /// foreground-fullscreen app. Serialized as `{ "surfaceAutoHide": bool }`.
     SurfaceAutoHide(bool),
+    /// Open the provider-owned protected media page in a hidden host window.
+    OpenProtectedHls {
+        session_id: u64,
+        page_url: String,
+    },
+    /// Close the protected media window if it still belongs to this session.
+    CloseProtectedHls {
+        session_id: u64,
+    },
+}
+
+impl fmt::Debug for HostCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RaiseMainWindow => formatter.write_str("RaiseMainWindow"),
+            Self::Quit => formatter.write_str("Quit"),
+            Self::SurfaceAutoHide(hidden) => formatter
+                .debug_tuple("SurfaceAutoHide")
+                .field(hidden)
+                .finish(),
+            Self::OpenProtectedHls { session_id, .. } => formatter
+                .debug_struct("OpenProtectedHls")
+                .field("session_id", session_id)
+                .field("page_url", &"[redacted]")
+                .finish(),
+            Self::CloseProtectedHls { session_id } => formatter
+                .debug_struct("CloseProtectedHls")
+                .field("session_id", session_id)
+                .finish(),
+        }
+    }
 }
 
 /// Closed, non-blocking sender for the host-control commands Core may request.
@@ -96,7 +129,8 @@ impl HostCommandPublisher {
     pub fn publish(&self, command: HostCommand) -> bool {
         match self.sender.send(command) {
             Ok(_) => true,
-            Err(_) => {
+            Err(error) => {
+                let command = error.0;
                 tracing::debug!(target: "host.command", ?command, "host command had no active subscriber");
                 false
             }

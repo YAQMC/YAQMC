@@ -19,6 +19,7 @@ class CoreManagerContractTest {
         assertTrue("credentialSave" in nativeMethods)
         assertTrue("credentialDelete" in nativeMethods)
         assertTrue("audioLoad" in nativeMethods)
+        assertTrue("audioLoadProtectedHls" in nativeMethods)
         assertTrue("audioPlay" in nativeMethods)
         assertTrue("audioPause" in nativeMethods)
         assertTrue("audioStop" in nativeMethods)

@@ -178,7 +178,9 @@ describe('collectDiagnosticsHostPayload', () => {
 
 describe('pins', () => {
   it('pins Electron 43.8.3 and keeps the 32 MiB protocol cap', () => {
-    expect(desktopPackage.devDependencies?.electron).toBe('43.8.3');
+    expect(desktopPackage.devDependencies?.electron).toBe(
+      'github:castlabs/electron-releases#v43.8.3+wvcus',
+    );
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
   });
 });

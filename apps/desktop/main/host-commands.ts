@@ -10,6 +10,8 @@ import { parseHostCommandPayload } from './windows/surface-auto-hide';
 export type HostCommandActions = {
   raiseMainWindow: () => void;
   quit: () => void;
+  openProtectedHls?: (sessionId: number, pageUrl: string) => void;
+  closeProtectedHls?: (sessionId: number) => void;
 };
 
 export type HostCommandClient = {
@@ -39,6 +41,20 @@ export type PlatformAttachOptions = {
  * `surfaceAutoHide` is owned by `subscribeSurfaceAutoHide`.
  */
 export function handleHostCommand(payload: unknown, actions: HostCommandActions): void {
+  if (payload && typeof payload === 'object') {
+    const command = payload as Record<string, unknown>;
+    const sessionId = command.sessionId;
+    if (Number.isSafeInteger(sessionId) && (sessionId as number) > 0) {
+      if (command.command === 'openProtectedHls' && typeof command.pageUrl === 'string') {
+        actions.openProtectedHls?.(sessionId as number, command.pageUrl);
+        return;
+      }
+      if (command.command === 'closeProtectedHls') {
+        actions.closeProtectedHls?.(sessionId as number);
+        return;
+      }
+    }
+  }
   const parsed = parseHostCommandPayload(payload);
   if (parsed?.kind === 'raise') {
     actions.raiseMainWindow();

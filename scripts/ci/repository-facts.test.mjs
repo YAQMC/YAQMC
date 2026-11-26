@@ -50,7 +50,7 @@ test('collects canonical requirements and continuity facts from production repos
     cargo: '1.88.0',
   });
   assert.deepEqual(facts.runtimeFacts, {
-    registeredProtocolMethods: 213,
+    registeredProtocolMethods: 218,
     mainWindow: '1280×800 (no enforced minimum)',
   });
   assert.deepEqual(

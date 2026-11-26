@@ -101,10 +101,12 @@ export interface PluginUpdateRuntimeReadyRequest {
 }
 
 export type PluginStoreFilter = 'all' | 'name' | 'description' | 'author' | 'repository';
+export type PluginStoreCategory = 'all' | 'theme' | 'ui' | 'page' | 'provider' | 'lyrics' | 'tool';
 export type PluginStoreSort = 'best-match' | 'stars' | 'updated';
 export interface PluginStoreSearchRequest {
   query?: string;
   filter?: PluginStoreFilter;
+  category?: PluginStoreCategory;
   sort?: PluginStoreSort;
   page?: number;
   refresh?: boolean;

@@ -1002,8 +1002,11 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         provider_auth_oauth_cancel: (cancelParams) =>
           oauth.invoke('provider_auth_oauth_cancel', { ...cancelParams, ...scope }),
       });
-      void authorization.completion.catch(() => undefined);
-      return oauth.invoke('provider_account_snapshot', scope);
+      // Component OAuth owns its popup and browser-session polling in the host.
+      // Return the final account snapshot so the dialog updates (or displays
+      // the completion error) instead of leaving the old guest snapshot on
+      // screen after the user signs in.
+      return authorization.completion;
     };
   }
 

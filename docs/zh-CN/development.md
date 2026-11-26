@@ -35,7 +35,7 @@ npm run dev
 
 提供器 manifest 无条件声明 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
-`1dbbf0b40e5b874ba2a20dda965cd5e57fe921d7`。
+`065a50c06606a2377ee8044c036ce3f659a914f0`。
 
 原生播放器提供需显式确认的[跨设备续播实验](cross-device-playback.md)。原设备自动暂停与精确进度迁移尚未验证。
 
@@ -91,6 +91,15 @@ npm run package -w @yaqmc/desktop -- --publish never
 
 这只生成当前主机架构。跨架构包必须使用对应 Rust target 与 CI 打包矩阵；修改
 文件名不会改变二进制架构。本机构建必须始终保留 `--publish never`。
+
+Windows DRM 播放还需要生产级 Widevine VMP 签名。仅安装 CDM 不够：可执行文件的
+资源修改和 Electron fuse 设置会使运行时附带的开发签名失效。打包前，在本地 Python
+环境中安装 `castlabs-evs==1.3.3`，执行 `python -m castlabs_evs.account reauth`
+登录，将 `YAQMC_WIDEVINE_PYTHON` 设为该环境的 Python 可执行文件路径。
+Windows `afterSign` hook 会在全部可执行文件修改完成后、生成 NSIS/便携包前，为
+`YAQMC.exe` 签名并验证。EVS 凭据只保存在其本地配置或进程环境中，不得提交到 Git。
+未配置时仍可构建普通包，但构建会明确提示生产受保护播放尚未完成签名。
+详见 [Castlabs EVS 指南](https://github.com/castlabs/electron-releases/wiki/EVS)。
 
 ## Android 构建
 

@@ -7,6 +7,11 @@ use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CorePaths};
 use yaqmc_protocol::StdioTransport;
 
 #[cfg(not(feature = "test-provider"))]
+#[cfg(all(windows, not(feature = "test-provider")))]
+#[path = "yaqmc-core/protected_hls_audio.rs"]
+mod protected_hls_audio;
+
+#[cfg(not(feature = "test-provider"))]
 use yaqmc_core::audio::{RodioAudioEngine, UnavailableAudioEngine};
 
 fn env_path(key: &str, fallback: &str) -> PathBuf {
@@ -41,26 +46,42 @@ async fn main() {
     let config_dir = env_path("YAQMC_CONFIG_DIR", "config");
     let _ = std::fs::create_dir_all(&config_dir);
     let _core_pid = yaqmc_core::pidfile::CorePidFile::write(&data_dir).expect("core pid file");
-    let audio = {
-        #[cfg(feature = "test-provider")]
-        {
-            Arc::new(yaqmc_core::audio::TestAudioEngine::default())
-                as Arc<dyn yaqmc_core::audio::AudioEngine>
-        }
-        #[cfg(not(feature = "test-provider"))]
-        match RodioAudioEngine::open_default() {
-            Ok(engine) => Arc::new(engine) as Arc<dyn yaqmc_core::audio::AudioEngine>,
-            Err(error) => {
-                tracing::warn!(
-                    target: "player.audio",
-                    error = %error,
-                    "falling back to unavailable audio"
-                );
-                Arc::new(UnavailableAudioEngine)
-            }
+    let runtime = tokio::runtime::Handle::current();
+    #[cfg(feature = "test-provider")]
+    let audio = Arc::new(yaqmc_core::audio::TestAudioEngine::default())
+        as Arc<dyn yaqmc_core::audio::AudioEngine>;
+    #[cfg(all(windows, not(feature = "test-provider")))]
+    let desktop_audio = match RodioAudioEngine::open_default() {
+        Ok(engine) => Some(Arc::new(protected_hls_audio::DesktopAudioEngine::new(
+            engine,
+            runtime.clone(),
+        ))),
+        Err(error) => {
+            tracing::warn!(
+                target: "player.audio",
+                error = %error,
+                "falling back to unavailable audio"
+            );
+            None
         }
     };
-    let runtime = tokio::runtime::Handle::current();
+    #[cfg(all(windows, not(feature = "test-provider")))]
+    let audio: Arc<dyn yaqmc_core::audio::AudioEngine> = desktop_audio
+        .as_ref()
+        .map(|engine| Arc::clone(engine) as Arc<dyn yaqmc_core::audio::AudioEngine>)
+        .unwrap_or_else(|| Arc::new(UnavailableAudioEngine));
+    #[cfg(all(not(windows), not(feature = "test-provider")))]
+    let audio: Arc<dyn yaqmc_core::audio::AudioEngine> = match RodioAudioEngine::open_default() {
+        Ok(engine) => Arc::new(engine),
+        Err(error) => {
+            tracing::warn!(
+                target: "player.audio",
+                error = %error,
+                "falling back to unavailable audio"
+            );
+            Arc::new(UnavailableAudioEngine)
+        }
+    };
     let core = bootstrap(
         CoreConfig {
             paths: CorePaths {
@@ -86,6 +107,10 @@ async fn main() {
         },
     )
     .expect("core bootstrap");
+    #[cfg(all(windows, not(feature = "test-provider")))]
+    if let Some(audio) = desktop_audio.as_ref() {
+        audio.attach_host_commands(core.host_command_publisher());
+    }
     let host = NoopHost {
         download_dir: env_path_or_temp("YAQMC_DOWNLOAD_DIR", "YAQMC/downloads"),
     };

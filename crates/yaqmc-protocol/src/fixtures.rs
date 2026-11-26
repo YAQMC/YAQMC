@@ -170,6 +170,7 @@ fn method_fixtures() -> Value {
                 TimeoutClass::Control => "control",
                 TimeoutClass::Standard => "standard",
                 TimeoutClass::Long => "long",
+                TimeoutClass::Authorization => "authorization",
             },
             timeout_ms: spec.timeout_class.duration().as_millis() as u64,
             allowed_origins: spec

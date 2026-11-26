@@ -58,7 +58,10 @@ test('pack:win is --win --x64 and NSIS stays per-user', () => {
   assert.match(pkg.scripts['pack:win'], /--win/);
   assert.match(pkg.scripts['pack:win'], /--x64/);
   assert.doesNotMatch(pkg.scripts['pack:win'], /--arm64/);
-  assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
+  assert.equal(
+    pkg.devDependencies.electron,
+    `github:castlabs/electron-releases#v${ELECTRON_VERSION}+wvcus`,
+  );
   assert.equal(pkg.dependencies?.['electron-updater'], '6.8.9');
   const yaml = readFileSync(
     path.join(repositoryRoot, 'apps', 'desktop', 'electron-builder.yml'),

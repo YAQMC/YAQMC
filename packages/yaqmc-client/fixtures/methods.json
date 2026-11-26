@@ -685,8 +685,8 @@
     "owner": "host",
     "requestCap": 1048576,
     "responseCap": 1048576,
-    "timeoutClass": "standard",
-    "timeoutMs": 30000
+    "timeoutClass": "authorization",
+    "timeoutMs": 600000
   },
   {
     "allowedOrigins": [

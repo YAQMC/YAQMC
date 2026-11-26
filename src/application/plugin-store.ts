@@ -1,7 +1,30 @@
-import type { PluginStoreAsset, PluginStoreRelease, PluginStoreRepository } from '@yaqmc/client';
+import type {
+  PluginStoreAsset,
+  PluginStoreCategory,
+  PluginStoreRelease,
+  PluginStoreRepository,
+} from '@yaqmc/client';
 import type { PluginRecord } from './plugin-runtime';
 
 export type StorePlatform = 'android' | 'windows' | 'linux' | 'macos';
+
+export const STORE_CATEGORIES: readonly PluginStoreCategory[] = [
+  'all',
+  'theme',
+  'ui',
+  'page',
+  'provider',
+  'lyrics',
+  'tool',
+];
+
+/** Public author-supplied labels, not permissions or a package trust decision. */
+export function storeCategories(topics: readonly string[]): Exclude<PluginStoreCategory, 'all'>[] {
+  return STORE_CATEGORIES.filter(
+    (category): category is Exclude<PluginStoreCategory, 'all'> =>
+      category !== 'all' && topics.includes(`yaqmc-plugin-${category}`),
+  );
+}
 
 const PLATFORM_TOKENS: Record<StorePlatform, readonly string[]> = {
   android: ['android'],

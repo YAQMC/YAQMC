@@ -15,6 +15,7 @@ const MAX_COMPONENT_IMAGE_BYTES: usize = 256 * 1024;
 
 const ALLOWED_REQUEST_HEADERS: &[&str] = &[
     "accept",
+    "app-platform",
     "clienttime",
     "content-type",
     "dfid",
@@ -24,6 +25,8 @@ const ALLOWED_REQUEST_HEADERS: &[&str] = &[
     "kg-thash",
     "kg-tid",
     "mid",
+    "origin",
+    "referer",
     "user-agent",
     "x-router",
 ];
@@ -42,7 +45,7 @@ struct PinnedRequest {
     host: String,
     addresses: Vec<SocketAddr>,
     headers: Vec<(String, String)>,
-    body: String,
+    body: Vec<u8>,
     response_limit: usize,
 }
 
@@ -57,6 +60,14 @@ struct TransportResponse {
 }
 
 pub(crate) struct ComponentMediaChunk {
+    pub status: u16,
+    pub body: Vec<u8>,
+    pub content_range: Option<String>,
+    pub content_length: Option<u64>,
+    pub mime_type: Option<String>,
+}
+
+pub(crate) struct ComponentBinaryResponse {
     pub status: u16,
     pub body: Vec<u8>,
     pub content_range: Option<String>,
@@ -106,6 +117,7 @@ impl NetworkTransport for ReqwestTransport {
         let client = client
             .build()
             .map_err(|_| "plugin network client could not be created".to_owned())?;
+        let is_head = request.method == reqwest::Method::HEAD;
         let mut builder = client.request(request.method, request.url);
         for (name, value) in request.headers {
             builder = builder.header(name, value);
@@ -125,7 +137,8 @@ impl NetworkTransport for ReqwestTransport {
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        let content_length = response.content_length();
+        let content_length =
+            transport_content_length(is_head, response.headers(), response.content_length());
         let mime_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -179,6 +192,21 @@ pub async fn proxy_request(
     payload: &Value,
 ) -> Result<Value, String> {
     proxy_request_with_limit(allowed_origins, payload, LEGACY_MAX_RESPONSE_BODY).await
+}
+
+fn transport_content_length(
+    is_head: bool,
+    headers: &reqwest::header::HeaderMap,
+    body_length: Option<u64>,
+) -> Option<u64> {
+    if is_head {
+        // HEAD has no body; its Content-Length describes the requested media.
+        headers
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok()?.parse().ok())
+    } else {
+        body_length
+    }
 }
 
 pub(crate) async fn proxy_component_request(
@@ -237,6 +265,35 @@ pub(crate) async fn proxy_component_media_range(
     )
     .await?;
     Ok(ComponentMediaChunk {
+        status: response.status,
+        body: response.body,
+        content_range: response.content_range,
+        content_length: response.content_length,
+        mime_type: response.mime_type,
+    })
+}
+
+pub(crate) async fn proxy_component_binary_request(
+    allowed_origins: &HashSet<String>,
+    payload: &Value,
+    credential_headers: &[ComponentCredentialHeader],
+    body: Vec<u8>,
+) -> Result<ComponentBinaryResponse, String> {
+    if body.len() > MAX_REQUEST_BODY {
+        return Err("plugin network request body is too large".into());
+    }
+    let response = proxy_raw_request_with_body(
+        allowed_origins,
+        payload,
+        COMPONENT_MAX_RESPONSE_BODY,
+        credential_headers,
+        &[],
+        body,
+        &SystemResolver,
+        &ReqwestTransport,
+    )
+    .await?;
+    Ok(ComponentBinaryResponse {
         status: response.status,
         body: response.body,
         content_range: response.content_range,
@@ -410,6 +467,36 @@ async fn proxy_raw_request_with(
     resolver: &dyn AddressResolver,
     transport: &dyn NetworkTransport,
 ) -> Result<TransportResponse, String> {
+    let body = payload
+        .get("body")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .as_bytes()
+        .to_vec();
+    proxy_raw_request_with_body(
+        allowed_origins,
+        payload,
+        response_limit,
+        credential_headers,
+        internal_headers,
+        body,
+        resolver,
+        transport,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn proxy_raw_request_with_body(
+    allowed_origins: &HashSet<String>,
+    payload: &Value,
+    response_limit: usize,
+    credential_headers: &[ComponentCredentialHeader],
+    internal_headers: &[(String, String)],
+    body: Vec<u8>,
+    resolver: &dyn AddressResolver,
+    transport: &dyn NetworkTransport,
+) -> Result<TransportResponse, String> {
     let method = payload
         .get("method")
         .and_then(Value::as_str)
@@ -428,7 +515,6 @@ async fn proxy_raw_request_with(
     if url.len() > MAX_URL_BYTES {
         return Err("plugin network url is too long".into());
     }
-    let body = payload.get("body").and_then(Value::as_str).unwrap_or("");
     if body.len() > MAX_REQUEST_BODY {
         return Err("plugin network request body is too large".into());
     }
@@ -466,9 +552,9 @@ async fn proxy_raw_request_with(
                 addresses,
                 headers: hop_headers,
                 body: if method == reqwest::Method::GET || method == reqwest::Method::HEAD {
-                    String::new()
+                    Vec::new()
                 } else {
-                    body.to_owned()
+                    body.clone()
                 },
                 response_limit,
             })
@@ -673,6 +759,25 @@ mod tests {
 
     fn public_address() -> SocketAddr {
         "1.1.1.1:443".parse().expect("public address")
+    }
+
+    #[test]
+    fn head_metadata_reports_media_length_instead_of_the_empty_body() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::CONTENT_LENGTH, "360492".parse().unwrap());
+        assert_eq!(
+            transport_content_length(true, &headers, Some(0)),
+            Some(360492)
+        );
+        // GET uses the decoded body length, which can differ from the wire header.
+        assert_eq!(
+            transport_content_length(false, &headers, Some(1024)),
+            Some(1024)
+        );
+        headers.clear();
+        assert_eq!(transport_content_length(true, &headers, Some(0)), None);
+        headers.insert(reqwest::header::CONTENT_LENGTH, "0".parse().unwrap());
+        assert_eq!(transport_content_length(true, &headers, Some(0)), Some(0));
     }
 
     fn allowed(origins: &[&str]) -> HashSet<String> {
@@ -1125,6 +1230,64 @@ mod tests {
             serde_json::json!({"authorization":"x"}),
         ] {
             assert!(validate_headers(Some(&headers)).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn spotify_web_protocol_headers_reach_transport_with_bound_credentials() {
+        for (url, header, credential_name) in [
+            (
+                "https://open.spotify.com/api/token",
+                ("referer", "https://open.spotify.com/"),
+                "cookie",
+            ),
+            (
+                "https://api-partner.spotify.com/pathfinder/v2/query",
+                ("app-platform", "WebPlayer"),
+                "client-token",
+            ),
+            (
+                "https://guc3-spclient.spotify.com/widevine-license/v1/audio/license",
+                ("origin", "https://open.spotify.com"),
+                "client-token",
+            ),
+        ] {
+            let origin = component_request_origin(&json!({"url": url})).unwrap();
+            let resolver = FakeResolver {
+                answers: Mutex::new(VecDeque::from([vec![public_address()]])),
+            };
+            let transport = FakeTransport {
+                responses: Mutex::new(VecDeque::from([TransportResponse {
+                    status: 200,
+                    location: None,
+                    body: b"{}".to_vec(),
+                    set_cookies: Vec::new(),
+                    content_range: None,
+                    content_length: Some(2),
+                    mime_type: Some("application/json".to_owned()),
+                }])),
+                pinned: Mutex::new(Vec::new()),
+                headers: Mutex::new(Vec::new()),
+            };
+            let credential = ComponentCredentialHeader {
+                origin: origin.clone(),
+                name: credential_name.to_owned(),
+                value: "synthetic".to_owned(),
+            };
+            proxy_request_with(
+                &allowed(&[&origin]),
+                &json!({"url": url, "headers": {header.0: header.1}}),
+                1024,
+                &[credential],
+                &resolver,
+                &transport,
+            )
+            .await
+            .expect("Spotify protocol headers must reach the network transport");
+            let sent = transport.headers.lock().expect("headers");
+            assert!(sent[0].contains(&(header.0.to_owned(), header.1.to_owned())));
+            assert!(sent[0].contains(&(credential_name.to_owned(), "synthetic".to_owned())));
+            assert!(validate_headers(Some(&json!({credential_name: "synthetic"}))).is_err());
         }
     }
 }

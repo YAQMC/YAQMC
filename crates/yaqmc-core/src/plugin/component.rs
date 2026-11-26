@@ -816,9 +816,7 @@ pub(crate) fn component_credential_headers(
             .and_then(serde_json::Value::as_str)
             .unwrap_or("authorization")
             .to_ascii_lowercase();
-        if !["authorization", "cookie", "x-api-key", "x-auth-token"].contains(&name.as_str())
-            || !names.insert(name.clone())
-        {
+        if !credential_header_name_allowed(&name) || !names.insert(name.clone()) {
             return Err("component credential header is not allowed".to_owned());
         }
         let prefix = binding
@@ -840,6 +838,13 @@ pub(crate) fn component_credential_headers(
         });
     }
     Ok(headers)
+}
+
+fn credential_header_name_allowed(name: &str) -> bool {
+    matches!(
+        name,
+        "authorization" | "cookie" | "client-token" | "x-api-key" | "x-auth-token"
+    )
 }
 
 #[cfg(test)]
@@ -1160,5 +1165,21 @@ mod tests {
             ),
             Err(ComponentRuntimeError::HostUnavailable)
         ));
+    }
+
+    #[test]
+    fn credential_headers_allow_spotify_client_token_only_by_name() {
+        for allowed in [
+            "authorization",
+            "cookie",
+            "client-token",
+            "x-api-key",
+            "x-auth-token",
+        ] {
+            assert!(credential_header_name_allowed(allowed), "{allowed}");
+        }
+        for rejected in ["app-platform", "x-client-token", "x-user-id", ""] {
+            assert!(!credential_header_name_allowed(rejected), "{rejected}");
+        }
     }
 }

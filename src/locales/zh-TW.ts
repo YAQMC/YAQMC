@@ -1047,6 +1047,16 @@ export const zhTW = {
           repository: '擁有者/儲存庫',
         },
         filterLabel: '搜尋範圍',
+        categoryLabel: '外掛分類',
+        category: {
+          all: '全部分類',
+          theme: '主題',
+          ui: 'UI 與版面配置',
+          page: '頁面',
+          provider: '音源',
+          lyrics: '歌詞',
+          tool: '工具',
+        },
         filter: {
           all: '名稱、描述、主題',
           name: '名稱',
@@ -1061,7 +1071,8 @@ export const zhTW = {
           updated: '最近更新',
         },
         refresh: '重新整理',
-        discoveryNotice: '儲存庫透過 GitHub 的 yaqmc-plugin 主題探索。被列出不代表經過審核或推薦。',
+        discoveryNotice:
+          '分類來自發布者標記的 GitHub 主題；未標記的外掛仍可在「全部分類」找到。被列出不代表經過審核或推薦。',
         loading: '正在載入外掛…',
         resultCount: '{{count}} 個儲存庫',
         incomplete: 'GitHub 傳回的結果不完整',

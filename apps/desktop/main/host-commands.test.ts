@@ -34,6 +34,29 @@ describe('handleHostCommand', () => {
     );
     expect(raise).toHaveBeenCalledTimes(1);
   });
+
+  it('routes protected playback windows only with a positive session id', () => {
+    const open = vi.fn();
+    const close = vi.fn();
+    const actions = {
+      raiseMainWindow: vi.fn(),
+      quit: vi.fn(),
+      openProtectedHls: open,
+      closeProtectedHls: close,
+    };
+    handleHostCommand(
+      { command: 'openProtectedHls', sessionId: 4, pageUrl: 'http://127.0.0.1/a/player' },
+      actions,
+    );
+    handleHostCommand({ command: 'closeProtectedHls', sessionId: 4 }, actions);
+    handleHostCommand(
+      { command: 'openProtectedHls', sessionId: 0, pageUrl: 'http://127.0.0.1/a/player' },
+      actions,
+    );
+    expect(open).toHaveBeenCalledWith(4, 'http://127.0.0.1/a/player');
+    expect(close).toHaveBeenCalledWith(4);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('raiseMainWindow', () => {
@@ -87,6 +110,28 @@ describe('subscribeHostCommands', () => {
     unsubscribe();
     client.emit(CHANNEL_HOST_COMMAND, { command: 'raise' });
     expect(raise).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles protected playback lifecycle commands', () => {
+    const client = new EventEmitter();
+    const open = vi.fn();
+    const close = vi.fn();
+    const unsubscribe = subscribeHostCommands(client, {
+      raiseMainWindow: vi.fn(),
+      quit: vi.fn(),
+      openProtectedHls: open,
+      closeProtectedHls: close,
+    });
+
+    client.emit(CHANNEL_HOST_COMMAND, {
+      command: 'openProtectedHls',
+      sessionId: 11,
+      pageUrl: 'http://127.0.0.1/session/player',
+    });
+    client.emit(CHANNEL_HOST_COMMAND, { command: 'closeProtectedHls', sessionId: 11 });
+    expect(open).toHaveBeenCalledWith(11, 'http://127.0.0.1/session/player');
+    expect(close).toHaveBeenCalledWith(11);
+    unsubscribe();
   });
 });
 

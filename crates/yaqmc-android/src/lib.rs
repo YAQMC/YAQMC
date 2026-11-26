@@ -24,7 +24,7 @@ use yaqmc_core::{
     audio::{
         open_playback_stream, AudioEngine, AudioEngineError, AudioEngineSnapshot,
         AudioLoadMetadata, AudioOutputDevice, AudioResolvedOutput, PlaybackStreamLocation,
-        PreparedPlaybackSource, ReadSeek,
+        PreparedPlaybackLocation, PreparedPlaybackSource, ReadSeek,
     },
     bootstrap,
     credentials::{CredentialError, CredentialStore},
@@ -33,6 +33,7 @@ use yaqmc_core::{
         AudioDiagnostics, DesktopIntegrationStatus, PlatformCapabilities, PlatformDiagnostics,
         SystemMediaStatus,
     },
+    protected_hls::ProtectedHlsSession,
     server::{CoreRuntime, EventSink, HostDispatchHooks},
     streaming::{ProgressiveError, ProgressiveMonitor},
     CoreBootstrapInputs, CoreConfig, CorePaths,
@@ -405,19 +406,100 @@ pub struct AndroidAudioEngine {
     state: Arc<Mutex<AudioState>>,
     current_stream_id: AtomicI64,
     source_generation: AtomicU64,
+    protected_session: Mutex<Option<ProtectedHlsSession>>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl AndroidAudioEngine {
-    fn new(vm: jni::JavaVM, callback: Global<JObject<'static>>) -> Self {
+    fn new(
+        vm: jni::JavaVM,
+        callback: Global<JObject<'static>>,
+        runtime: tokio::runtime::Handle,
+    ) -> Self {
         Self {
             vm,
             callback,
             state: Arc::new(Mutex::new(AudioState::default())),
             current_stream_id: AtomicI64::new(0),
             source_generation: AtomicU64::new(0),
+            protected_session: Mutex::new(None),
+            runtime,
         }
     }
 
+    fn clear_protected_session(&self) -> bool {
+        self.protected_session
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+            .is_some()
+    }
+
+    fn load_protected(
+        &self,
+        source: &PreparedPlaybackSource,
+        protected: Arc<dyn yaqmc_core::media::ProtectedHlsSource>,
+    ) -> Result<AudioLoadMetadata, AudioEngineError> {
+        self.stop()?;
+        let session = ProtectedHlsSession::start(protected, self.runtime.clone())
+            .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+        let endpoints = session.endpoints();
+        let stream_id = NEXT_STREAM_ID.fetch_add(1, Ordering::Relaxed);
+        let duration_ms = source
+            .timeline_end_ms
+            .map(|value| value.min(jlong::MAX as u64) as jlong)
+            .unwrap_or(-1);
+        let ok = self
+            .vm
+            .attach_current_thread(|env| -> Result<bool, jni::errors::Error> {
+                let manifest = JObject::from(env.new_string(endpoints.manifest_url)?);
+                let license = JObject::from(env.new_string(endpoints.license_url)?);
+                env.call_method(
+                    &self.callback,
+                    jni::jni_str!("audioLoadProtectedHls"),
+                    jni::jni_sig!((jlong, JString, JString, jlong) -> bool),
+                    &[
+                        JValue::Long(stream_id),
+                        JValue::Object(&manifest),
+                        JValue::Object(&license),
+                        JValue::Long(duration_ms),
+                    ],
+                )?
+                .z()
+            })
+            .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
+        if !ok {
+            return Err(AudioEngineError::DecoderUnsupported);
+        }
+        let generation = self.source_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        *self
+            .protected_session
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(session);
+        let duration_ms = source.timeline_end_ms;
+        let mut st = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *st = AudioState {
+            loaded: true,
+            playing: false,
+            paused: true,
+            ended: false,
+            buffering: true,
+            position_ms: 0,
+            last_position_update: Instant::now(),
+            duration_ms,
+            error: None,
+            error_kind: None,
+            source_generation: generation,
+            active_stream_id: stream_id,
+        };
+        Ok(AudioLoadMetadata {
+            duration_ms,
+            format: source.format,
+        })
+    }
     fn state_handle(&self) -> Arc<Mutex<AudioState>> {
         Arc::clone(&self.state)
     }
@@ -441,6 +523,10 @@ impl AndroidAudioEngine {
 
 impl AudioEngine for AndroidAudioEngine {
     fn load(&self, source: &PreparedPlaybackSource) -> Result<AudioLoadMetadata, AudioEngineError> {
+        if let PreparedPlaybackLocation::ProtectedHls(protected) = &source.location {
+            return self.load_protected(source, Arc::clone(protected));
+        }
+        let _ = self.stop();
         let location = open_playback_stream(source)?;
         let (stream_id, local_path) = match location {
             PlaybackStreamLocation::Local(path) => {
@@ -577,17 +663,17 @@ impl AudioEngine for AndroidAudioEngine {
         if prev_id != 0 {
             retire_stream(prev_id);
         }
-        self.vm
-            .attach_current_thread(|env| {
-                env.call_method(
-                    &self.callback,
-                    jni::jni_str!("audioStop"),
-                    jni::jni_sig!(() -> ()),
-                    &[],
-                )?;
-                Ok::<_, jni::errors::Error>(())
-            })
-            .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
+        let stop_result = self.vm.attach_current_thread(|env| {
+            env.call_method(
+                &self.callback,
+                jni::jni_str!("audioStop"),
+                jni::jni_sig!(() -> ()),
+                &[],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        });
+        self.clear_protected_session();
+        stop_result.map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
 
         let mut st = self
             .state
@@ -596,7 +682,6 @@ impl AudioEngine for AndroidAudioEngine {
         *st = AudioState::default();
         Ok(())
     }
-
     fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
         let pos_ms = position.as_millis() as u64;
         self.vm
@@ -1045,7 +1130,11 @@ fn initialize(
             .build()
             .map_err(|error| error.to_string())?,
     );
-    let audio_engine = Arc::new(AndroidAudioEngine::new(vm.clone(), callback_audio_ref));
+    let audio_engine = Arc::new(AndroidAudioEngine::new(
+        vm.clone(),
+        callback_audio_ref,
+        runtime.handle().clone(),
+    ));
     let audio_state = audio_engine.state_handle();
     let audio: Arc<dyn AudioEngine> = audio_engine;
     let data_dir = PathBuf::from(files_dir);

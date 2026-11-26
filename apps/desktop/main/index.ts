@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  components,
   dialog,
   globalShortcut,
   ipcMain,
@@ -118,6 +119,8 @@ import {
   type LyricsUnlockCreateOptions,
   type LyricsUnlockKind,
 } from './windows/lyrics-unlock';
+import { ProtectedAudioWindows } from './windows/protected-audio-window';
+import { prepareProtectedAudioRuntime } from './windows/protected-audio-runtime';
 
 type E2ePlayerSnapshotView = {
   queueLength: number;
@@ -206,8 +209,16 @@ function applyWindowsOcclusionSwitches(): void {
   }
 }
 
+function applyProtectedAudioSwitches(): void {
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
+
 applyLinuxGraphicsSwitches();
 applyWindowsOcclusionSwitches();
+applyProtectedAudioSwitches();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const smoke = __YAQMC_QA_BUILD__ && process.env.YAQMC_DESKTOP_SMOKE === '1';
@@ -253,6 +264,10 @@ let supervisor: CoreSupervisor | undefined;
 let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;
+const protectedAudioWindows = new ProtectedAudioWindows(
+  (options) => new BrowserWindow(options),
+  (message) => writeHostLog(message),
+);
 let e2eSecondInstanceHits = 0;
 let e2eOpenSettingsHits = 0;
 let e2ePlayerSnapshotHits = 0;
@@ -1232,6 +1247,12 @@ function attachSupervisor(instance: CoreSupervisor): void {
     subscribeHostCommands(instance.client, {
       raiseMainWindow: () => raiseHostMainWindow(mainWindow),
       quit: quitFromHostCommand,
+      openProtectedHls: (sessionId, pageUrl) => {
+        if (!protectedAudioWindows.open(sessionId, pageUrl)) {
+          writeHostLog(`protected audio rejected session=${sessionId}`);
+        }
+      },
+      closeProtectedHls: (sessionId) => protectedAudioWindows.close(sessionId),
     });
     sendPlatformAttach();
     uiPerfCoreReady = true;
@@ -1256,10 +1277,14 @@ function coreDataPaths() {
   return resolveCorePaths();
 }
 
+function initializeHostLog(): void {
+  hostLog ??= createHostLog({ logDir: coreDataPaths().logDir });
+}
+
 function startSupervisor(): Promise<void> {
   const paths = coreDataPaths();
   // Rotating host.log lives in the Core log dir (DIAG leftover, §27.1).
-  hostLog = createHostLog({ logDir: paths.logDir });
+  initializeHostLog();
   if (__YAQMC_QA_BUILD__ && e2e && process.env.YAQMC_E2E_CORE !== '1') {
     writeHostLog('supervisor skip: YAQMC_ELECTRON_E2E (set YAQMC_E2E_CORE=1 to spawn)');
     return Promise.resolve();
@@ -1384,6 +1409,11 @@ if (
   )
 ) {
   app.whenReady().then(async () => {
+    initializeHostLog();
+    const protectedAudio = await prepareProtectedAudioRuntime(process.platform, components);
+    writeHostLog(
+      `protected-audio runtime=${protectedAudio.ready ? 'ready' : 'unavailable'} widevine=${protectedAudio.componentStatus ?? 'unknown'} version=${protectedAudio.version ?? 'unknown'}`,
+    );
     await confirmNativeUpdateHealth(false);
     const nativeTarget = nativeUpdateTarget();
     if (nativeTarget)

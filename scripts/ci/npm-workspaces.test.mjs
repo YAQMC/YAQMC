@@ -35,10 +35,10 @@ test('@yaqmc/client is a composite workspace package', () => {
   assert.equal(tsconfig.compilerOptions.strict, true);
 });
 
-test('@yaqmc/desktop pins Electron 43.8.3 and is referenced from the root tsconfig', () => {
+test('@yaqmc/desktop pins Castlabs Electron 43.8.3 and is referenced from the root tsconfig', () => {
   const pkg = readJson('apps/desktop/package.json');
   assert.equal(pkg.name, '@yaqmc/desktop');
-  assert.equal(pkg.devDependencies.electron, '43.8.3');
+  assert.equal(pkg.devDependencies.electron, 'github:castlabs/electron-releases#v43.8.3+wvcus');
   assert.equal(pkg.scripts.test, 'vitest run --config ./vitest.config.ts');
   assert.equal(pkg.main, './dist/main/index.js');
   const tsconfig = readJson('tsconfig.json');

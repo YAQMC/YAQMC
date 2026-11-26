@@ -8,6 +8,9 @@ productName: YAQMC
 copyright: GPL-3.0-or-later
 asar: true
 electronVersion: 43.8.3
+electronDist: ../../node_modules/electron/dist
+# VMP must cover the final executable, after fuse/resource edits and Authenticode.
+afterSign: scripts/sign-widevine.mjs
 publish:
   provider: github
   owner: YAQMC

@@ -15,6 +15,8 @@ packages/yaqmc-client/fixtures
 .worktrees/**
 worktrees/**
 target
+# Preserve the upstream minified distribution byte-for-byte.
+/crates/yaqmc-core/assets/hls.min.js
 /apps/android/android/**/build/**
 /apps/android/android/.gradle/**
 /apps/android/android/app/src/main/assets/**

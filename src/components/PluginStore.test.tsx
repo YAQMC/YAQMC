@@ -106,6 +106,28 @@ describe('PluginStore', () => {
     expect(screen.getByPlaceholderText('Search plugin name, author, or repository')).toBeVisible();
   });
 
+  it('filters categories across server pages and keeps the search field independent', async () => {
+    plugins.storeSearch
+      .mockResolvedValueOnce({ ...page(), page: 1, hasMore: true })
+      .mockResolvedValueOnce(
+        page([{ ...repository, topics: ['yaqmc-plugin', 'yaqmc-plugin-provider'] }]),
+      );
+    render(<PluginStore onShowInstalled={vi.fn()} />);
+    expect(await screen.findByText('yaqmc-music-providers')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Plugin category' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Music sources' }));
+    await waitFor(() =>
+      expect(plugins.storeSearch).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category: 'provider', filter: 'all', page: 1 }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('Music sources', { selector: '.plugin-chip' }),
+    ).toBeInTheDocument();
+    expect(plugins.prepareUpdate).not.toHaveBeenCalled();
+  });
+
   it('explains rate limits with GitHub reset time instead of showing an empty store', async () => {
     plugins.storeSearch.mockRejectedValue(new Error('store-rate-limited:1800000000000'));
     render(<PluginStore onShowInstalled={vi.fn()} />);

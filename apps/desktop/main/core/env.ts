@@ -13,7 +13,8 @@
  * the gate on Windows builders. This list does not claim MPRIS or SMTC green.
  *
  * Windows process start and the ELEC-03 handshake need PATH, SYSTEMROOT, and
- * the user-profile vars (`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`).
+ * the user-profile vars (`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`). Edge lookup
+ * also needs PROGRAMFILES / PROGRAMFILES(X86) for system-wide installations.
  *
  * Matching is case-insensitive so Windows `Path` / `SystemRoot` still copy.
  * `LC_*` matches by prefix in addition to the exact locale keys. Parent
@@ -25,6 +26,8 @@ export const CORE_SPAWN_ENV_ALLOWLIST = [
   'PATH',
   'PATHEXT',
   'SYSTEMROOT',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
   'WINDIR',
   'COMSPEC',
   'TMPDIR',

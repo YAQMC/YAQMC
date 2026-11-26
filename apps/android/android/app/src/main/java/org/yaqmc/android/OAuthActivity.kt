@@ -42,6 +42,7 @@ class OAuthActivity : ComponentActivity() {
     private lateinit var navigationAllowlist: List<String>
     private lateinit var externalNavigationRules: List<OAuthExternalNavigationRule>
     private lateinit var callbackPrefix: String
+    private var browserSessionPolicy: OAuthBrowserSessionPolicy? = null
     private var webView: WebView? = null
     private var backButton: ImageButton? = null
     private var progress: ProgressBar? = null
@@ -62,6 +63,15 @@ class OAuthActivity : ComponentActivity() {
             return
         }
         callbackPrefix = intent.getStringExtra(EXTRA_CALLBACK_PREFIX).orEmpty()
+        val browserSession = intent.getStringExtra(EXTRA_BROWSER_SESSION)
+        browserSessionPolicy = if (browserSession == null) {
+            null
+        } else {
+            OAuthBrowserSessionPolicyCodec.parse(browserSession) ?: run {
+                cancel()
+                return
+            }
+        }
         val presentedUrl = OAuthUrlPolicy.selectPresentationUrl(
             intent.getStringExtra(EXTRA_URL),
             intent.getStringExtra(EXTRA_MOBILE_URL),
@@ -158,11 +168,7 @@ class OAuthActivity : ComponentActivity() {
 
     private fun handleNavigation(uri: Uri, isForMainFrame: Boolean): Boolean {
         if (OAuthUrlPolicy.matchesCallback(uri.toString(), callbackPrefix)) {
-            if (!finished) {
-                finished = true
-                setResult(RESULT_OK, Intent().setData(uri))
-                finishAndClean()
-            }
+            if (!finished) finishWithCallback(uri)
             return true
         }
         // QQ's current mobile login emits its package-scoped scheme through a hidden iframe.
@@ -202,6 +208,26 @@ class OAuthActivity : ComponentActivity() {
             }
         }
         Toast.makeText(this, R.string.oauth_app_unavailable, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun finishWithCallback(uri: Uri) {
+        val cookies = browserSessionPolicy?.let { policy ->
+            OAuthBrowserSessionPolicyCodec.selectedCookies(
+                CookieManager.getInstance().getCookie(policy.url),
+                policy,
+            )
+        }
+        if (browserSessionPolicy != null && cookies == null) {
+            cancel()
+            return
+        }
+        finished = true
+        val result = Intent().setData(uri)
+        cookies?.let {
+            result.putExtra(EXTRA_BROWSER_SESSION_COOKIES, it.toString())
+        }
+        setResult(RESULT_OK, result)
+        finishAndClean()
     }
 
     private fun cancel() {
@@ -411,6 +437,7 @@ class OAuthActivity : ComponentActivity() {
             }
         }
         webView = null
+        browserSessionPolicy = null
         backButton = null
         progress = null
         loadError = null
@@ -426,6 +453,8 @@ class OAuthActivity : ComponentActivity() {
         const val EXTRA_EXTERNAL_NAVIGATION_RULES =
             "org.yaqmc.android.oauth.external_navigation_rules"
         const val EXTRA_CALLBACK_PREFIX = "org.yaqmc.android.oauth.callback_prefix"
+        const val EXTRA_BROWSER_SESSION = "org.yaqmc.android.oauth.browser_session"
+        const val EXTRA_BROWSER_SESSION_COOKIES = "org.yaqmc.android.oauth.browser_session_cookies"
     }
 }
 

@@ -3,6 +3,7 @@
 use crate::{PlaybackEpoch, PlaybackSourceSelection, Song};
 use async_trait::async_trait;
 use std::{
+    collections::BTreeMap,
     fmt, io,
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -170,10 +171,85 @@ pub trait OpaquePlaybackSource: Send + Sync + fmt::Debug {
     ) -> Result<Vec<u8>, PlaybackSourceError>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProtectedHlsResponse {
+    pub status: u16,
+    pub body: Vec<u8>,
+    pub content_range: Option<String>,
+    pub content_length: Option<u64>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct ProtectedHlsBrowserPlayer {
+    pub html: Arc<[u8]>,
+    /// Package-relative JavaScript assets, snapshotted for this playback session.
+    pub scripts: BTreeMap<String, Arc<[u8]>>,
+}
+
+impl fmt::Debug for ProtectedHlsBrowserPlayer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProtectedHlsBrowserPlayer")
+            .field("html_bytes", &self.html.len())
+            .field("scripts", &self.scripts.keys())
+            .finish()
+    }
+}
+
+/// A DRM-protected HLS session whose manifests, media ranges, and licence
+/// challenges remain behind provider-owned credential handles. Core uses this
+/// boundary to expose only a loopback URL to a browser or native media stack.
+#[async_trait]
+pub trait ProtectedHlsSource: Send + Sync + fmt::Debug {
+    fn manifest_url(&self) -> &str;
+
+    /// Optional plugin-owned browser playback implementation. Native platforms
+    /// can continue consuming the manifest and DRM requests directly.
+    fn browser_player(&self) -> Option<&ProtectedHlsBrowserPlayer> {
+        None
+    }
+
+    /// Whether the DRM service requires a Widevine application certificate
+    /// before the first license challenge.
+    fn requires_application_certificate(&self) -> bool {
+        false
+    }
+
+    async fn fetch_manifest(
+        &self,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError>;
+
+    async fn fetch_media_range(
+        &self,
+        url: String,
+        offset: u64,
+        length: usize,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError>;
+
+    async fn request_license(
+        &self,
+        challenge: Vec<u8>,
+        cancellation: CancellationToken,
+    ) -> Result<ProtectedHlsResponse, PlaybackSourceError>;
+
+    /// Fetch the application certificate when the provider advertises one.
+    /// Providers without certificate exchange keep the default `None` result.
+    async fn fetch_application_certificate(
+        &self,
+        _cancellation: CancellationToken,
+    ) -> Result<Option<ProtectedHlsResponse>, PlaybackSourceError> {
+        Ok(None)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum PlaybackLocation {
     Local(PathBuf),
     Opaque(Arc<dyn OpaquePlaybackSource>),
+    ProtectedHls(Arc<dyn ProtectedHlsSource>),
     Http {
         url: String,
         headers: Vec<(String, String)>,

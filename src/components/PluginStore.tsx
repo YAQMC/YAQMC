@@ -5,6 +5,7 @@ import type {
   PluginStoreAsset,
   PluginStoreAssetRef,
   PluginStoreFilter,
+  PluginStoreCategory,
   PluginStoreRelease,
   PluginStoreRepository,
   PluginStoreSort,
@@ -19,6 +20,8 @@ import {
   latestInstallableRelease,
   parseStoreError,
   storeInstallState,
+  storeCategories,
+  STORE_CATEGORIES,
   type StoreError,
 } from '../application/plugin-store';
 import { openExternalUrl } from '../application/external-links';
@@ -68,6 +71,7 @@ export function PluginStore({ onShowInstalled }: { onShowInstalled: (pluginId: s
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<PluginStoreFilter>('all');
+  const [category, setCategory] = useState<PluginStoreCategory>('all');
   const [sort, setSort] = useState<PluginStoreSort>('best-match');
   const [state, setState] = useState<SearchState>(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -104,7 +108,14 @@ export function PluginStore({ onShowInstalled }: { onShowInstalled: (pluginId: s
       setLoading(true);
       setError(null);
       try {
-        const result = await client.plugins.storeSearch({ query, filter, sort, page, refresh });
+        const result = await client.plugins.storeSearch({
+          query,
+          filter,
+          category,
+          sort,
+          page,
+          refresh,
+        });
         // Results from an older query never overwrite a newer one.
         if (!gate.current.isCurrent(token)) return;
         setState((current) => {
@@ -125,7 +136,7 @@ export function PluginStore({ onShowInstalled }: { onShowInstalled: (pluginId: s
         if (gate.current.isCurrent(token)) setLoading(false);
       }
     },
-    [filter, query, sort],
+    [filter, category, query, sort],
   );
 
   useEffect(() => {
@@ -220,6 +231,12 @@ export function PluginStore({ onShowInstalled }: { onShowInstalled: (pluginId: s
           }))}
           onChange={setSort}
         />
+        <Select<PluginStoreCategory>
+          value={category}
+          ariaLabel={t('categoryLabel')}
+          options={STORE_CATEGORIES.map((value) => ({ value, label: t(`category.${value}`) }))}
+          onChange={setCategory}
+        />
         <button
           type="button"
           className="button button--quiet"
@@ -256,7 +273,7 @@ export function PluginStore({ onShowInstalled }: { onShowInstalled: (pluginId: s
       )}
       {!loading && !error && state.page > 0 && state.items.length === 0 && (
         <p className="settings-empty plugin-manager__empty">
-          {query.trim() ? t('noResults') : t('noPlugins')}
+          {query.trim() || category !== 'all' ? t('noResults') : t('noPlugins')}
         </p>
       )}
 
@@ -360,6 +377,15 @@ function StoreCard({
         </span>
       </div>
       <p className="plugin-card__description">{repo.description ?? t('noDescription')}</p>
+      {storeCategories(repo.topics).length > 0 && (
+        <span className="plugin-card__capabilities" aria-label={t('categoryLabel')}>
+          {storeCategories(repo.topics).map((value) => (
+            <span key={value} className="plugin-chip">
+              {t(`category.${value}`)}
+            </span>
+          ))}
+        </span>
+      )}
       <p className="plugin-card__meta">
         {[
           latest?.tagName,

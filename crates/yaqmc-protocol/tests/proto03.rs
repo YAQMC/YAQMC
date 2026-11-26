@@ -155,6 +155,10 @@ fn timeout_classes_match_the_client_budget_table() {
     assert_eq!(TimeoutClass::Control.duration(), Duration::from_secs(10));
     assert_eq!(TimeoutClass::Standard.duration(), Duration::from_secs(30));
     assert_eq!(TimeoutClass::Long.duration(), Duration::from_secs(120));
+    assert_eq!(
+        TimeoutClass::Authorization.duration(),
+        Duration::from_secs(600)
+    );
 
     assert_eq!(
         method("core_ping").expect("core_ping").timeout_class,
@@ -171,6 +175,12 @@ fn timeout_classes_match_the_client_budget_table() {
             .expect("plugin_install")
             .timeout_class,
         TimeoutClass::Long
+    );
+    assert_eq!(
+        method("provider_auth_oauth_start")
+            .expect("provider_auth_oauth_start")
+            .timeout_class,
+        TimeoutClass::Authorization
     );
 }
 

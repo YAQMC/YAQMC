@@ -1,14 +1,15 @@
 [package]
 name = "yaqmc-core"
-version = "0.1.3-beta.3"
+version = "0.1.3-beta.4"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["plugins", "local-api", "system-media"]
+default = ["plugins", "local-api", "protected-hls", "system-media"]
 plugins = ["dep:lofty", "dep:md-5", "dep:rsa", "dep:ring", "dep:semver", "dep:wasmtime", "dep:wasmtime-wasi"]
 local-api = []
+protected-hls = []
 system-media = ["dep:mpris-server", "dep:souvlaki", "dep:windows-sys"]
 test-support = ["dep:tempfile"]
 test-provider = ["test-support", "plugins", "local-api", "system-media"]

@@ -104,6 +104,7 @@ dependencies {
     implementation("androidx.media3:media3-common:1.10.1")
     implementation("androidx.media3:media3-session:1.10.1")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.10.1")
     implementation("org.rustls:rustls-platform-verifier:$rustlsVerifierVersion")
     implementation("dev.yaqmc:amll-android:0.1.0-yaqmc.1ed23d4")
     testImplementation("junit:junit:4.13.2")

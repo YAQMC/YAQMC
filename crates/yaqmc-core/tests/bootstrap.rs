@@ -185,6 +185,8 @@ fn host_command_is_an_exhaustive_typed_surface() {
             HostCommand::RaiseMainWindow => "raise",
             HostCommand::Quit => "quit",
             HostCommand::SurfaceAutoHide(_) => "surfaceAutoHide",
+            HostCommand::OpenProtectedHls { .. } => "openProtectedHls",
+            HostCommand::CloseProtectedHls { .. } => "closeProtectedHls",
         }
     }
 
@@ -193,6 +195,17 @@ fn host_command_is_an_exhaustive_typed_surface() {
     assert_eq!(
         describe(HostCommand::SurfaceAutoHide(true)),
         "surfaceAutoHide"
+    );
+    assert_eq!(
+        describe(HostCommand::OpenProtectedHls {
+            session_id: 1,
+            page_url: "http://127.0.0.1/session/player".to_owned(),
+        }),
+        "openProtectedHls"
+    );
+    assert_eq!(
+        describe(HostCommand::CloseProtectedHls { session_id: 1 }),
+        "closeProtectedHls"
     );
 }
 

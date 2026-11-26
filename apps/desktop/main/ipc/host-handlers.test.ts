@@ -996,7 +996,11 @@ describe('IpcRouter host intercepts', () => {
       }));
       const invoke = vi.fn<OAuthHostDeps['invoke']>(async (method) => {
         if (method === 'provider_auth_oauth_prepare') return prepared;
-        if (method === 'provider_auth_oauth_complete' || method === 'provider_account_snapshot')
+        if (
+          method === 'provider_auth_oauth_complete' ||
+          method === 'provider_auth_oauth_cancel' ||
+          method === 'provider_account_snapshot'
+        )
           return snapshot;
         return { ok: true };
       });
@@ -1017,8 +1021,11 @@ describe('IpcRouter host intercepts', () => {
         params: { ...scope, methodId: 'browser-oauth' },
       });
       await vi.waitFor(() => expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url));
-      await expect(authorization).resolves.toEqual({ ok: true, result: snapshot });
-      expect(invoke).toHaveBeenCalledWith('provider_account_snapshot', scope);
+      const beforeCompletion = vi.fn();
+      void authorization.then(beforeCompletion);
+      await Promise.resolve();
+      expect(beforeCompletion).not.toHaveBeenCalled();
+      expect(invoke).not.toHaveBeenCalledWith('provider_account_snapshot', scope);
       expect(invoke).not.toHaveBeenCalledWith('provider_auth_oauth_complete', expect.anything());
       const callbackUrl = `${prepared.callbackMatcher.urlPrefix}&code=authorized`;
       navigate?.({ preventDefault: vi.fn() }, callbackUrl);
@@ -1036,17 +1043,17 @@ describe('IpcRouter host intercepts', () => {
         callbackUrl,
       });
 
-      await router.invoke(1, {
+      const cancelledAuthorization = router.invoke(1, {
         method: 'provider_auth_oauth_start',
         params: { ...scope, methodId: 'browser-oauth' },
       });
+      await vi.waitFor(() => expect(oauthWindow.loadURL).toHaveBeenCalledTimes(2));
       closed?.();
-      await vi.waitFor(() =>
-        expect(invoke).toHaveBeenCalledWith('provider_auth_oauth_cancel', {
-          ...scope,
-          attemptId: prepared.attemptId,
-        }),
-      );
+      await expect(cancelledAuthorization).resolves.toEqual({ ok: true, result: snapshot });
+      expect(invoke).toHaveBeenCalledWith('provider_auth_oauth_cancel', {
+        ...scope,
+        attemptId: prepared.attemptId,
+      });
       for (const invalidProfile of ['', '../other', 42, null]) {
         await expect(
           router.invoke(1, {

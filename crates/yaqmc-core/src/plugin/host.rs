@@ -792,6 +792,7 @@ impl ExtensionHost {
                 )
             }
             .map_err(|error| HostError::from(error.to_string()))?;
+            adapter.set_package_root(dir.clone());
             if self.staged_component_services(id).is_some() {
                 adapter
                     .component()

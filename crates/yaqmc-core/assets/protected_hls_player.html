@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>YAQMC protected audio</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+      audio {
+        position: fixed;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      pre {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 10px;
+        color: #ddd;
+        font: 12px/1.45 monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+    <script src="hls.js"></script>
+  </head>
+  <body>
+    <audio id="player" preload="auto"></audio>
+    <pre id="diagnostic">Preparing protected audio…</pre>
+    <script>
+      (() => {
+        'use strict';
+        const token = location.pathname.split('/').filter(Boolean)[0] || '';
+        const base = `${location.origin}/${token}`;
+        const manifestUrl = `${base}/m3u8`;
+        const licenseUrl = `${base}/license`;
+        const certificateUrl = `${base}/cert`;
+        const configUrl = `${base}/config`;
+        const commandUrl = `${base}/command`;
+        const stateUrl = `${base}/state`;
+        const audio = document.getElementById('player');
+        const diagnostic = document.getElementById('diagnostic');
+        let wantPlay = false;
+        let ready = false;
+        let lastCommand = 0;
+        let destroyed = false;
+        let failed = false;
+        let playbackStarted = false;
+        let buffering = false;
+        let hls = null;
+
+        const currentState = () => ({
+          positionMs: Number.isFinite(audio.currentTime)
+            ? Math.max(0, Math.round(audio.currentTime * 1000))
+            : 0,
+          durationMs: Number.isFinite(audio.duration)
+            ? Math.max(0, Math.round(audio.duration * 1000))
+            : null,
+        });
+
+        const postState = (kind, message = '', diagnostics = {}) => {
+          if (destroyed || (failed && kind !== 'error')) return;
+          const state = currentState();
+          fetch(stateUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              kind,
+              message: String(message).slice(0, 512),
+              ...diagnostics,
+              ...state,
+            }),
+            keepalive: kind === 'ended' || kind === 'error',
+          }).catch(() => {});
+        };
+
+        const showError = (message, diagnostics = {}) => {
+          if (failed) return;
+          failed = true;
+          ready = false;
+          wantPlay = false;
+          audio.pause();
+          if (hls) hls.stopLoad();
+          diagnostic.textContent = message;
+          postState('error', message, diagnostics);
+        };
+
+        const safeLabel = (value, fallback = 'unknown') => {
+          const label = String(value || '')
+            .replace(/[^A-Za-z0-9_.-]/g, '_')
+            .slice(0, 64);
+          return label || fallback;
+        };
+
+        const postDiagnostic = (stage, detail = '') => {
+          postState('diagnostic', '', {
+            errorType: safeLabel(stage, 'unknown_stage'),
+            errorDetail: safeLabel(detail, 'none'),
+          });
+        };
+
+        window.addEventListener('securitypolicyviolation', (event) => {
+          if (event.disposition === 'enforce' && event.effectiveDirective === 'media-src') {
+            postDiagnostic('browser_policy', 'media_src_blocked');
+          }
+        });
+
+        const tryPlay = () => {
+          if (!ready || !wantPlay || failed) return;
+          audio.play().catch((error) => {
+            const errorName = error && error.name ? error.name : 'failed';
+            showError(`playback: ${errorName}`, { errorType: 'playback', errorDetail: errorName });
+          });
+        };
+
+        const applyCommand = (command) => {
+          if (failed) return;
+          switch (command && command.type) {
+            case 'play':
+              if (!wantPlay) buffering = true;
+              wantPlay = true;
+              tryPlay();
+              break;
+            case 'pause':
+              wantPlay = false;
+              audio.pause();
+              break;
+            case 'seek':
+              if (Number.isFinite(command.positionMs)) {
+                audio.currentTime = Math.max(0, command.positionMs / 1000);
+                postState('seeked');
+              }
+              break;
+            case 'volume':
+              if (Number.isFinite(command.volumeMillis)) {
+                audio.volume = Math.max(0, Math.min(1, command.volumeMillis / 1000));
+              }
+              break;
+          }
+        };
+
+        const commandLoop = async () => {
+          while (!destroyed) {
+            try {
+              const response = await fetch(`${commandUrl}?after=${lastCommand}`, {
+                cache: 'no-store',
+                signal: AbortSignal.timeout(25000),
+              });
+              if (response.status === 204) continue;
+              if (!response.ok) throw new Error(`command http=${response.status}`);
+              const value = await response.json();
+              if (value.seq > lastCommand) {
+                lastCommand = value.seq;
+                applyCommand(value.command);
+              }
+            } catch (error) {
+              if (destroyed) return;
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+          }
+        };
+
+        audio.addEventListener('playing', () => {
+          if (failed) return;
+          playbackStarted = true;
+          buffering = false;
+          diagnostic.textContent = 'Playing protected audio…';
+          postState('playing');
+        });
+        audio.addEventListener('pause', () => postState('paused'));
+        const reportBuffering = () => {
+          buffering = true;
+          postState('buffering');
+        };
+        audio.addEventListener('waiting', reportBuffering);
+        audio.addEventListener('seeking', reportBuffering);
+        audio.addEventListener('seeked', () => {
+          buffering = audio.readyState < 3;
+          postState(wantPlay ? (buffering ? 'buffering' : 'playing') : 'paused');
+        });
+        audio.addEventListener('durationchange', () => postState('duration'));
+        audio.addEventListener('ended', () => {
+          wantPlay = false;
+          postState('ended');
+          setTimeout(() => window.close(), 250);
+        });
+        audio.addEventListener('error', () => {
+          const mediaError = audio.error;
+          const code = mediaError ? mediaError.code : 0;
+          showError(mediaError ? `media: ${code}` : 'media error', {
+            errorType: 'media',
+            errorDetail: `media_error_${code}`,
+          });
+        });
+
+        postState('ready');
+        commandLoop();
+
+        const startPlayback = async () => {
+          const mediaSource = typeof MediaSource === 'undefined' ? null : MediaSource;
+          const capabilities = {
+            hlsPresent: typeof Hls !== 'undefined',
+            hlsSupported: typeof Hls !== 'undefined' && Hls.isSupported(),
+            mediaSourcePresent: mediaSource !== null,
+            aacLcSupported: Boolean(mediaSource?.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')),
+            aacHeSupported: Boolean(mediaSource?.isTypeSupported('audio/mp4; codecs="mp4a.40.5"')),
+          };
+          postDiagnostic(
+            'media_capabilities',
+            `hls_${Number(capabilities.hlsPresent)}_${Number(capabilities.hlsSupported)}_mse_${Number(capabilities.mediaSourcePresent)}_aac_${Number(capabilities.aacLcSupported)}_${Number(capabilities.aacHeSupported)}`,
+          );
+          if (!capabilities.hlsSupported) {
+            showError('HLS playback is unsupported by this Chromium runtime.', {
+              errorType: 'capability',
+              errorDetail: 'hls_or_mse_unsupported',
+            });
+            return;
+          }
+          let serverCertificate = false;
+          try {
+            const response = await fetch(configUrl, { cache: 'no-store' });
+            if (!response.ok) {
+              showError(`configuration: http=${response.status}`, {
+                errorType: 'configuration',
+                errorDetail: 'config_request_failed',
+                httpStatus: response.status,
+              });
+              return;
+            }
+            const config = await response.json();
+            serverCertificate = config && config.serverCertificate === true;
+          } catch (error) {
+            const errorName = error && error.name ? error.name : 'failed';
+            showError(`configuration: ${errorName}`, {
+              errorType: 'configuration',
+              errorDetail: errorName,
+            });
+            return;
+          }
+          const widevine = { licenseUrl };
+          if (serverCertificate) widevine.serverCertificateUrl = certificateUrl;
+          hls = new Hls({
+            emeEnabled: true,
+            enableWorker: false,
+            backBufferLength: 30,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            maxBufferSize: 4 * 1024 * 1024,
+            drmSystems: {
+              'com.widevine.alpha': widevine,
+            },
+          });
+          hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(manifestUrl));
+          hls.on(Hls.Events.MEDIA_ATTACHED, () => postDiagnostic('hls_media_attached'));
+          hls.on(Hls.Events.MANIFEST_LOADING, () => postDiagnostic('hls_manifest_loading'));
+          hls.on(Hls.Events.MANIFEST_LOADED, (_event, data) => {
+            const byteCount = Number.isFinite(data?.stats?.loaded)
+              ? Math.min(data.stats.loaded, 99999999)
+              : 0;
+            postDiagnostic('hls_manifest_loaded', `bytes_${byteCount}`);
+          });
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            ready = true;
+            diagnostic.textContent = 'Protected audio ready…';
+            postState('manifest');
+            postDiagnostic('hls_manifest_parsed');
+            tryPlay();
+          });
+          hls.on(Hls.Events.BUFFER_CODECS, (_event, data) => {
+            const codecs = Object.values(data?.tracks || {})
+              .map((track) => safeLabel(track?.codec, 'unknown_codec'))
+              .join('_')
+              .slice(0, 128);
+            postDiagnostic('hls_buffer_codecs', codecs || 'no_tracks');
+          });
+          hls.on(Hls.Events.FRAG_LOADING, (_event, data) => {
+            postDiagnostic('hls_fragment_loading', safeLabel(data?.frag?.type, 'unknown_type'));
+          });
+          hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+            postDiagnostic('hls_fragment_loaded', safeLabel(data?.frag?.type, 'unknown_type'));
+          });
+          hls.on(Hls.Events.KEY_LOADING, () => postDiagnostic('hls_key_loading'));
+          hls.on(Hls.Events.KEY_LOADED, () => postDiagnostic('hls_key_loaded'));
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (!data) return;
+            const errorType = safeLabel(data.type, 'unknown_type');
+            const errorDetail = safeLabel(data.details, 'unknown_detail');
+            const kind =
+              data.type === Hls.ErrorTypes.KEY_SYSTEM_ERROR ? 'DRM' : data.type || 'media';
+            const status =
+              data.response && Number.isFinite(data.response.code)
+                ? `http=${data.response.code}`
+                : '';
+            postDiagnostic(
+              `hls_error_${errorType}`,
+              `${errorDetail}_${status || 'no_http_status'}`,
+            );
+            if (!data.fatal) return;
+            showError([kind, errorDetail, status].filter(Boolean).join(': '), {
+              errorType:
+                data.type === Hls.ErrorTypes.KEY_SYSTEM_ERROR ? 'KEY_SYSTEM_ERROR' : errorType,
+              errorDetail,
+              httpStatus:
+                data.response && Number.isFinite(data.response.code) ? data.response.code : null,
+            });
+          });
+          hls.attachMedia(audio);
+        };
+        startPlayback();
+
+        setInterval(() => {
+          if (destroyed || failed || !ready) return;
+          postState(
+            wantPlay
+              ? playbackStarted && !buffering && !audio.paused
+                ? 'playing'
+                : 'buffering'
+              : 'paused',
+          );
+        }, 500);
+
+        window.addEventListener('beforeunload', () => {
+          destroyed = true;
+          if (hls) hls.destroy();
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -88,7 +88,10 @@ test('yml declares AppImage deb rpm tar.gz for x64 and arm64 without an updater 
   const pkg = JSON.parse(
     readFileSync(path.join(repositoryRoot, 'apps', 'desktop', 'package.json'), 'utf8'),
   );
-  assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
+  assert.equal(
+    pkg.devDependencies.electron,
+    `github:castlabs/electron-releases#v${ELECTRON_VERSION}+wvcus`,
+  );
   assert.equal(pkg.devDependencies['electron-builder'], BUILDER_VERSION);
   assert.equal(pkg.dependencies?.['electron-updater'], '6.8.9');
 });

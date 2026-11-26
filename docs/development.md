@@ -37,7 +37,7 @@ keyring, disk cache, tray, media session, or real QQ Music transport.
 
 The provider manifest declares the `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
-`1dbbf0b40e5b874ba2a20dda965cd5e57fe921d7`.
+`065a50c06606a2377ee8044c036ce3f659a914f0`.
 
 The native player includes an opt-in [cross-device playback experiment](cross-device-playback.md).
 Remote pause and exact-position transfer remain unverified.
@@ -103,6 +103,18 @@ This produces only the current host architecture. Cross-architecture packages
 must use the matching Rust target and the CI packaging matrix; renaming an
 artifact does not change its architecture. Local builds must always keep
 `--publish never`.
+
+Windows DRM playback also needs a production Widevine VMP signature. Installing
+the CDM alone is insufficient: executable resource edits and Electron fuses invalidate
+the runtime's bundled development signature. Before packaging, install
+`castlabs-evs==1.3.3` in a local Python environment, log in with
+`python -m castlabs_evs.account reauth`, and set `YAQMC_WIDEVINE_PYTHON` to that
+environment's Python executable. The Windows `afterSign` hook signs and verifies
+`YAQMC.exe` after all executable edits, before NSIS/portable archives are created.
+EVS credentials stay in its local configuration or process environment, never in Git.
+Without this configuration ordinary packages still build, with a warning that
+production protected playback has not been signed. See the
+[Castlabs EVS guide](https://github.com/castlabs/electron-releases/wiki/EVS).
 
 ## Android build
 

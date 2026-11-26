@@ -1045,6 +1045,16 @@ export const zhCN = {
           repository: '所有者/仓库',
         },
         filterLabel: '搜索范围',
+        categoryLabel: '插件分类',
+        category: {
+          all: '全部分类',
+          theme: '主题',
+          ui: 'UI 与布局',
+          page: '页面',
+          provider: '音源',
+          lyrics: '歌词',
+          tool: '工具',
+        },
         filter: {
           all: '名称、描述、主题',
           name: '名称',
@@ -1059,7 +1069,8 @@ export const zhCN = {
           updated: '最近更新',
         },
         refresh: '刷新',
-        discoveryNotice: '仓库通过 GitHub 的 yaqmc-plugin 主题发现。被列出不代表经过审核或推荐。',
+        discoveryNotice:
+          '分类来自发布者标记的 GitHub 主题；未标记的插件仍可在“全部分类”找到。被列出不代表经过审核或推荐。',
         loading: '正在加载插件…',
         resultCount: '{{count}} 个仓库',
         incomplete: 'GitHub 返回的结果不完整',
