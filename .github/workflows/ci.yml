@@ -259,6 +259,9 @@ jobs:
     timeout-minutes: 90
     env:
       YAQMC_PREBUILT_FRONTEND: '1'
+      ELECTRON_MIRROR: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'https://github.com/electron/electron/releases/download/' || '' }}
+      ELECTRON_CUSTOM_VERSION: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && '43.8.3' || '' }}
+      electron_use_remote_checksums: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && '1' || '' }}
       CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'true' || 'thin' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && '1' || '8' }}
     steps:

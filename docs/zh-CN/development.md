@@ -31,6 +31,16 @@ npm run dev
 该模式可用于界面、状态管理、本地化和组件开发；它有意不提供原生音频、keyring、磁盘缓存、托盘、
 系统媒体会话或真实 QQ 音乐传输。
 
+Castlabs 未提供当前固定版本的 Linux arm64 运行时。该平台使用同版本的上游 Electron，
+CI 的 Linux arm64 打包作业会设置以下安装变量：
+
+```sh
+ELECTRON_MIRROR=https://github.com/electron/electron/releases/download/ ELECTRON_CUSTOM_VERSION=43.8.3 electron_use_remote_checksums=1 npm ci
+```
+
+打包辅助脚本按目标架构下载并校验运行时，包括 Windows/macOS 交叉打包。
+Linux arm64 不提供 DRM 播放后端。
+
 ## 原生提供器 pin
 
 提供器 manifest 无条件声明 crate `qqmusic-api`：

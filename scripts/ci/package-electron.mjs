@@ -31,6 +31,31 @@ export const MACOS_SIGNING_ENV_KEYS = [
 ];
 export const SIGNABLE_ELECTRON_OSES = ['windows', 'macos'];
 
+export function electronRuntimeDownload({ os, arch }) {
+  const platform = { windows: 'win32', linux: 'linux', macos: 'darwin' }[os];
+  if (!platform || !['x64', 'arm64'].includes(arch)) {
+    throw new Error('Unsupported Electron package platform or architecture');
+  }
+  // ECS does not publish Linux arm64. That platform has no DRM backend and
+  // uses the matching upstream runtime; cross builds must never copy the host runtime.
+  const upstream = platform === 'linux' && arch === 'arm64';
+  return {
+    artifactName: 'electron',
+    platform,
+    arch,
+    version: upstream ? '43.8.3' : '43.8.3+wvcus',
+    mirrorOptions: {
+      mirror: `https://github.com/${upstream ? 'electron/electron' : 'castlabs/electron-releases'}/releases/download/`,
+    },
+  };
+}
+
+export async function downloadElectronRuntime(options, download) {
+  const request = electronRuntimeDownload(options);
+  // @electron/get checks the archive against the selected release's SHA256SUMS.
+  return (download ?? (await import('@electron/get')).downloadArtifact)(request);
+}
+
 export function parseElectronPackageArgs(argv) {
   const options = { dryRun: false };
   for (let index = 0; index < argv.length; index += 1) {
@@ -241,7 +266,7 @@ function run(command, args, options = {}) {
   return result;
 }
 
-function main() {
+async function main() {
   const options = parseElectronPackageArgs(process.argv.slice(2));
   const osName = options.os;
   const arch = options.arch;
@@ -300,10 +325,19 @@ function main() {
   stageCore({ repoRoot: repositoryRoot, profile: 'release', rustTarget: target });
 
   const desktopRoot = path.join(repositoryRoot, 'apps', 'desktop');
-  run('npx', ['electron-builder', ...plan.electronBuilder.slice(1)], {
-    cwd: desktopRoot,
-    env: packageEnv,
-  });
+  const electronArchive = await downloadElectronRuntime({ os: osName, arch });
+  run(
+    'npx',
+    [
+      'electron-builder',
+      ...plan.electronBuilder.slice(1),
+      `--config.electronDist=${electronArchive}`,
+    ],
+    {
+      cwd: desktopRoot,
+      env: packageEnv,
+    },
+  );
 
   const staged = stageElectronArtifacts({
     os: osName,
@@ -322,5 +356,8 @@ function main() {
 const invokedDirectly =
   Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-  main();
+  main().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
 }

@@ -33,6 +33,17 @@ npm run dev
 This mode supports UI, state-management, localization, and component work. It intentionally has no native audio,
 keyring, disk cache, tray, media session, or real QQ Music transport.
 
+Castlabs does not publish the pinned Electron runtime for Linux arm64. On that
+platform, install the same upstream Electron version instead (CI sets these
+variables for its Linux arm64 packaging job):
+
+```sh
+ELECTRON_MIRROR=https://github.com/electron/electron/releases/download/ ELECTRON_CUSTOM_VERSION=43.8.3 electron_use_remote_checksums=1 npm ci
+```
+
+The packaging helper downloads and verifies the runtime for the requested target
+architecture, including Windows/macOS cross builds. Linux arm64 has no DRM backend.
+
 ## Native provider pin
 
 The provider manifest declares the `qqmusic-api` crate

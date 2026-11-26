@@ -9,6 +9,8 @@ import {
   cargoBuildArgs,
   electronArtifactNames,
   electronBuilderArgs,
+  electronRuntimeDownload,
+  downloadElectronRuntime,
   isElectronCoreCross,
   parseElectronPackageArgs,
   packagingBuildEnvironment,
@@ -19,6 +21,40 @@ import {
 
 const SCRIPT = path.join(repositoryRoot, 'scripts', 'ci', 'package-electron.mjs');
 const WORKFLOW = path.join(repositoryRoot, '.github', 'workflows', 'ci.yml');
+
+test('runtime archives match each target architecture including cross builds', () => {
+  for (const os of ['windows', 'linux', 'macos']) {
+    for (const arch of ['x64', 'arm64']) {
+      const request = electronRuntimeDownload({ os, arch });
+      assert.equal(request.platform, { windows: 'win32', linux: 'linux', macos: 'darwin' }[os]);
+      assert.equal(request.arch, arch);
+      assert.equal(request.artifactName, 'electron');
+      const upstream = os === 'linux' && arch === 'arm64';
+      assert.equal(request.version, upstream ? '43.8.3' : '43.8.3+wvcus');
+      assert.equal(
+        request.mirrorOptions.mirror,
+        `https://github.com/${upstream ? 'electron/electron' : 'castlabs/electron-releases'}/releases/download/`,
+      );
+      assert.notEqual(request.unsafelyDisableChecksums, true);
+    }
+  }
+  assert.throws(() => electronRuntimeDownload({ os: 'linux', arch: 'ia32' }));
+});
+
+test('runtime download passes the target request and propagates failures', async () => {
+  const archive = await downloadElectronRuntime({ os: 'macos', arch: 'arm64' }, async (request) => {
+    assert.equal(request.platform, 'darwin');
+    assert.equal(request.arch, 'arm64');
+    return '/cache/electron-darwin-arm64.zip';
+  });
+  assert.equal(archive, '/cache/electron-darwin-arm64.zip');
+  await assert.rejects(
+    downloadElectronRuntime({ os: 'linux', arch: 'arm64' }, async () => {
+      throw new Error('archive verification failed');
+    }),
+    /archive verification failed/,
+  );
+});
 
 test('Node 26 approves only the reviewed pinned install scripts', () => {
   const rootPackage = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'));

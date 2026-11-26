@@ -242,6 +242,10 @@ jobs:
     timeout-minutes: 90
     env:
       YAQMC_PREBUILT_FRONTEND: '1'
+      # ECS has no Linux arm64 archive. Keep npm's native runtime install usable.
+      ELECTRON_MIRROR: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'https://github.com/electron/electron/releases/download/' || '' }}
+      ELECTRON_CUSTOM_VERSION: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && '43.8.3' || '' }}
+      electron_use_remote_checksums: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && '1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-packaging
